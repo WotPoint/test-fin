@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { X, Plus, Trash2, RefreshCw, Play, Pause } from 'lucide-react';
+import { X, Plus, Trash2, RefreshCw, Play, Pause, Edit2, Check } from 'lucide-react';
+import { ConfirmDialog } from '../UI/ConfirmDialog';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
@@ -9,9 +10,22 @@ import { formatMoney, getFrequencyLabel } from '../../utils/formatters';
 
 interface RecurringModalProps { onClose: () => void; }
 
+const emptyForm = () => ({
+  name: '',
+  type: 'expense' as TransactionType,
+  amount: '',
+  categoryId: '',
+  accountId: '',
+  frequency: 'monthly' as RecurringFrequency,
+  startDate: format(new Date(), 'yyyy-MM-dd'),
+});
+
 export const RecurringModal = ({ onClose }: RecurringModalProps) => {
   const { recurringTransactions, accounts, categories, addRecurring, updateRecurring, deleteRecurring, processRecurring } = useFinanceStore();
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   const [name, setName] = useState('');
   const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState('');
@@ -22,17 +36,47 @@ export const RecurringModal = ({ onClose }: RecurringModalProps) => {
 
   const filteredCats = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type) && !c.isArchived);
 
-  const handleAdd = (e: React.FormEvent) => {
+  const openCreate = () => {
+    setEditingId(null);
+    const d = emptyForm();
+    setName(d.name); setType(d.type); setAmount(d.amount);
+    setCategoryId(d.categoryId); setAccountId(accounts[0]?.id || '');
+    setFrequency(d.frequency); setStartDate(d.startDate);
+    setShowForm(true);
+  };
+
+  const openEdit = (id: string) => {
+    const r = recurringTransactions.find(x => x.id === id);
+    if (!r) return;
+    setEditingId(id);
+    setName(r.name); setType(r.type); setAmount(r.amount.toString());
+    setCategoryId(r.categoryId); setAccountId(r.accountId);
+    setFrequency(r.frequency); setStartDate(r.startDate);
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !amount || !accountId) { toast.error('Заполните все поля'); return; }
-    addRecurring({
+    const data = {
       name, type, amount: parseFloat(amount),
       categoryId: categoryId || filteredCats[0]?.id || '',
-      accountId, frequency, startDate, nextDate: startDate, isActive: true,
-    });
-    toast.success('Регулярная транзакция добавлена');
-    setShowForm(false);
-    setName(''); setAmount(''); setCategoryId('');
+      accountId, frequency,
+    };
+
+    if (editingId) {
+      updateRecurring(editingId, data);
+      toast.success('Регулярная транзакция обновлена');
+    } else {
+      addRecurring({ ...data, startDate, nextDate: startDate, isActive: true });
+      toast.success('Регулярная транзакция добавлена');
+    }
+    closeForm();
   };
 
   const handleProcess = () => {
@@ -83,7 +127,11 @@ export const RecurringModal = ({ onClose }: RecurringModalProps) => {
                       r.isActive ? 'text-income hover:bg-income/10' : 'text-text-muted hover:bg-bg-hover')}>
                     {r.isActive ? <Play size={13} /> : <Pause size={13} />}
                   </button>
-                  <button onClick={() => { deleteRecurring(r.id); toast.success('Удалено'); }}
+                  <button onClick={() => openEdit(r.id)}
+                    className="p-1.5 rounded-lg text-text-muted hover:text-brand hover:bg-brand/10 transition-colors">
+                    <Edit2 size={13} />
+                  </button>
+                  <button onClick={() => setConfirmDeleteId(r.id)}
                     className="p-1.5 rounded-lg text-text-muted hover:text-expense hover:bg-expense/10 transition-colors">
                     <Trash2 size={13} />
                   </button>
@@ -98,12 +146,15 @@ export const RecurringModal = ({ onClose }: RecurringModalProps) => {
 
           {/* Form */}
           {showForm ? (
-            <form onSubmit={handleAdd} className="space-y-3 p-4 bg-bg-secondary rounded-xl border border-bg-border">
+            <form onSubmit={handleSubmit} className="space-y-3 p-4 bg-bg-secondary rounded-xl border border-bg-border">
+              <p className="text-text-primary text-sm font-medium">
+                {editingId ? 'Редактировать' : 'Новая регулярная транзакция'}
+              </p>
               <input value={name} onChange={e => setName(e.target.value)} placeholder="Название"
                 className="w-full bg-bg-card border border-bg-border rounded-xl px-3 py-2.5 text-text-primary text-sm
                   focus:outline-none focus:border-brand" />
               <div className="grid grid-cols-2 gap-2">
-                <select value={type} onChange={e => setType(e.target.value as TransactionType)}
+                <select value={type} onChange={e => { setType(e.target.value as TransactionType); setCategoryId(''); }}
                   className="bg-bg-card border border-bg-border rounded-xl px-3 py-2.5 text-text-primary text-sm focus:outline-none focus:border-brand">
                   <option value="expense">Расход</option>
                   <option value="income">Доход</option>
@@ -133,21 +184,25 @@ export const RecurringModal = ({ onClose }: RecurringModalProps) => {
                   <option value="quarterly">Ежеквартально</option>
                   <option value="yearly">Ежегодно</option>
                 </select>
-                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-                  className="bg-bg-card border border-bg-border rounded-xl px-3 py-2.5 text-text-primary text-sm focus:outline-none focus:border-brand" />
+                {!editingId && (
+                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                    className="bg-bg-card border border-bg-border rounded-xl px-3 py-2.5 text-text-primary text-sm focus:outline-none focus:border-brand" />
+                )}
               </div>
               <div className="flex gap-2">
-                <button type="submit" className="flex-1 py-2.5 rounded-xl bg-brand text-bg-primary font-semibold text-sm hover:bg-brand-light transition-all">
-                  Добавить
+                <button type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-brand text-bg-primary font-semibold text-sm hover:bg-brand-light transition-all flex items-center justify-center gap-1.5">
+                  <Check size={14} />
+                  {editingId ? 'Сохранить' : 'Добавить'}
                 </button>
-                <button type="button" onClick={() => setShowForm(false)}
+                <button type="button" onClick={closeForm}
                   className="px-4 py-2.5 rounded-xl border border-bg-border text-text-secondary hover:text-text-primary text-sm transition-all">
                   Отмена
                 </button>
               </div>
             </form>
           ) : (
-            <button onClick={() => setShowForm(true)}
+            <button onClick={openCreate}
               className="w-full py-3 rounded-xl border border-dashed border-bg-border text-text-muted text-sm
                 hover:border-brand/50 hover:text-brand transition-all flex items-center justify-center gap-2">
               <Plus size={15} /> Добавить регулярную транзакцию
@@ -155,6 +210,16 @@ export const RecurringModal = ({ onClose }: RecurringModalProps) => {
           )}
         </div>
       </div>
+      {confirmDeleteId && (() => {
+        const r = recurringTransactions.find(x => x.id === confirmDeleteId);
+        return (
+          <ConfirmDialog
+            title={`Удалить «${r?.name}»?`}
+            onConfirm={() => { deleteRecurring(confirmDeleteId); toast.success('Удалено'); setConfirmDeleteId(null); }}
+            onCancel={() => setConfirmDeleteId(null)}
+          />
+        );
+      })()}
     </div>
   );
 };

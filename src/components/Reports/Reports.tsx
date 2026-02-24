@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { useFinanceStore } from '../../store/useFinanceStore';
 import { exportToCSV, exportToCSVFile } from '../../utils/export';
 import { formatMoney, getMonthName } from '../../utils/formatters';
+import { chartTooltipStyle } from '../../utils/chartTheme';
 
 type ReportPeriod = 'month' | 'quarter' | 'year' | 'custom';
 
@@ -163,12 +164,15 @@ export const Reports = () => {
             <h3 className="text-text-primary font-semibold mb-4">По месяцам</h3>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={monthlyBreakdown} barGap={4}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e2d4a" vertical={false} />
-                <XAxis dataKey="month" tick={{ fill: '#8898b4', fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#8898b4', fontSize: 10 }} axisLine={false} tickLine={false}
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--bg-border)" vertical={false} />
+                <XAxis dataKey="month" tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} axisLine={false} tickLine={false}
                   tickFormatter={v => `${(v / 1000).toFixed(0)}К`} width={35} />
-                <Tooltip contentStyle={{ background: '#131929', border: '1px solid #1e2d4a', borderRadius: 8 }}
-                  formatter={(v: number, n) => [formatMoney(v), n === 'income' ? 'Доход' : 'Расход']} />
+                <Tooltip
+                  {...chartTooltipStyle}
+                  itemStyle={{ color: 'var(--text-primary)' }}
+                  formatter={(v: number, n) => [formatMoney(v), n === 'income' ? 'Доход' : 'Расход']}
+                />
                 <Bar dataKey="income" fill="#22c55e" radius={[3, 3, 0, 0]} maxBarSize={30} />
                 <Bar dataKey="expense" fill="#ef4444" radius={[3, 3, 0, 0]} maxBarSize={30} />
               </BarChart>
@@ -187,7 +191,11 @@ export const Reports = () => {
                     paddingAngle={3} dataKey="value">
                     {expPieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
-                  <Tooltip formatter={(v: number) => formatMoney(v)} contentStyle={{ background: '#131929', border: '1px solid #1e2d4a', borderRadius: 8 }} />
+                  <Tooltip
+                    {...chartTooltipStyle}
+                    itemStyle={{ color: 'var(--text-primary)' }}
+                    formatter={(v: number) => formatMoney(v)}
+                  />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex-1 space-y-2">

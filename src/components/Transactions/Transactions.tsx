@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Plus, Search, Filter, Trash2, Edit2, ChevronDown, ArrowUpDown, Repeat } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, ArrowUpDown, Repeat } from 'lucide-react';
+import { ConfirmDialog } from '../UI/ConfirmDialog';
 import { format, parseISO } from 'date-fns';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
@@ -16,6 +17,7 @@ export const Transactions = () => {
   const [showModal, setShowModal] = useState(false);
   const [showRecurring, setShowRecurring] = useState(false);
   const [editId, setEditId] = useState<string | undefined>();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'' | TransactionType>('');
   const [filterCat, setFilterCat] = useState('');
@@ -23,7 +25,7 @@ export const Transactions = () => {
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortAsc, setSortAsc] = useState(false);
   const [page, setPage] = useState(1);
-  const PER_PAGE = 20;
+  const PER_PAGE = 25;
 
   const catMap = Object.fromEntries(categories.map(c => [c.id, c]));
   const accMap = Object.fromEntries(accounts.map(a => [a.id, a]));
@@ -48,17 +50,27 @@ export const Transactions = () => {
     return list;
   }, [transactions, search, filterType, filterCat, filterAccount, sortKey, sortAsc]);
 
-  const paged = filtered.slice(0, page * PER_PAGE);
-  const hasMore = filtered.length > page * PER_PAGE;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+  const paged = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+
+  const pageNumbers = (() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    if (safePage <= 4) return [1, 2, 3, 4, 5, '...', totalPages];
+    if (safePage >= totalPages - 3) return [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    return [1, '...', safePage - 1, safePage, safePage + 1, '...', totalPages];
+  })();
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortAsc(!sortAsc);
     else { setSortKey(key); setSortAsc(false); }
+    setPage(1);
   };
 
   const handleDelete = (id: string) => {
     deleteTransaction(id);
     toast.success('Транзакция удалена');
+    setConfirmDeleteId(null);
   };
 
   // Group by date
@@ -163,10 +175,14 @@ export const Transactions = () => {
                       <p className="text-text-primary text-sm font-medium truncate">
                         {tx.comment || cat?.name || 'Без категории'}
                       </p>
-                      <div className="flex items-center gap-2 text-xs text-text-muted mt-0.5">
+                      <div className="flex items-center gap-2 text-xs text-text-muted mt-0.5 flex-wrap">
                         <span>{cat?.name}</span>
                         {acc && <><span>•</span><span>{acc.name}</span></>}
-                        {tx.receiptPhoto && <><span>•</span><span className="text-brand">📷</span></>}
+                        {tx.tags && tx.tags.map(tag => (
+                          <span key={tag} className="px-1.5 py-0.5 rounded-full bg-brand/10 text-brand font-medium">
+                            #{tag}
+                          </span>
+                        ))}
                       </div>
                     </div>
 
@@ -190,7 +206,7 @@ export const Transactions = () => {
                         className="p-1.5 rounded-lg text-text-muted hover:text-brand hover:bg-brand/10 transition-colors">
                         <Edit2 size={14} />
                       </button>
-                      <button onClick={() => handleDelete(tx.id)}
+                      <button onClick={() => setConfirmDeleteId(tx.id)}
                         className="p-1.5 rounded-lg text-text-muted hover:text-expense hover:bg-expense/10 transition-colors">
                         <Trash2 size={14} />
                       </button>
@@ -210,17 +226,50 @@ export const Transactions = () => {
         </div>
       )}
 
-      {hasMore && (
-        <div className="text-center">
-          <button onClick={() => setPage(p => p + 1)}
-            className="px-6 py-2.5 rounded-xl border border-bg-border text-text-secondary hover:text-text-primary hover:border-brand/50 text-sm transition-all">
-            Загрузить ещё ({filtered.length - paged.length})
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-1">
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={safePage === 1}
+            className="px-3 py-2 rounded-xl border border-bg-border text-text-secondary hover:text-text-primary hover:bg-bg-hover text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            ←
+          </button>
+          {pageNumbers.map((p, i) =>
+            p === '...'
+              ? <span key={`ellipsis-${i}`} className="px-2 py-2 text-text-muted text-sm">…</span>
+              : <button
+                  key={p}
+                  onClick={() => setPage(p as number)}
+                  className={`px-3 py-2 rounded-xl text-sm font-medium transition-all min-w-[36px] ${
+                    safePage === p
+                      ? 'bg-brand text-bg-primary'
+                      : 'border border-bg-border text-text-secondary hover:text-text-primary hover:bg-bg-hover'
+                  }`}
+                >
+                  {p}
+                </button>
+          )}
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={safePage === totalPages}
+            className="px-3 py-2 rounded-xl border border-bg-border text-text-secondary hover:text-text-primary hover:bg-bg-hover text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            →
           </button>
         </div>
       )}
 
       {showModal && <TransactionModal onClose={() => { setShowModal(false); setEditId(undefined); }} editId={editId} />}
       {showRecurring && <RecurringModal onClose={() => setShowRecurring(false)} />}
+      {confirmDeleteId && (
+        <ConfirmDialog
+          title="Удалить транзакцию?"
+          message="Это действие нельзя отменить."
+          onConfirm={() => handleDelete(confirmDeleteId)}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
+      )}
     </div>
   );
 };

@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { X, Upload, Camera, Calendar } from 'lucide-react';
+import { useState, KeyboardEvent } from 'react';
+import { X, Calendar, Tag } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
@@ -24,20 +24,28 @@ export const TransactionModal = ({ onClose, editId }: TransactionModalProps) => 
   const [toAccountId, setToAccountId] = useState(editing?.toAccountId || '');
   const [date, setDate] = useState(editing?.date || format(new Date(), 'yyyy-MM-dd'));
   const [comment, setComment] = useState(editing?.comment || '');
-  const [receipt, setReceipt] = useState(editing?.receiptPhoto || '');
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [tags, setTags] = useState<string[]>(editing?.tags || []);
+  const [tagInput, setTagInput] = useState('');
 
   const filteredCats = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type) && !c.isArchived);
   const filteredSubs = subcategories.filter(s => s.categoryId === categoryId);
   const activeAccounts = accounts.filter(a => !a.isArchived);
 
-  const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setReceipt(ev.target?.result as string);
-    reader.readAsDataURL(file);
+  const addTag = () => {
+    const t = tagInput.trim().toLowerCase();
+    if (t && !tags.includes(t)) setTags(prev => [...prev, t]);
+    setTagInput('');
   };
+
+  const handleTagKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); addTag(); }
+    if (e.key === ',') { e.preventDefault(); addTag(); }
+    if (e.key === 'Backspace' && tagInput === '' && tags.length > 0) {
+      setTags(prev => prev.slice(0, -1));
+    }
+  };
+
+  const removeTag = (tag: string) => setTags(prev => prev.filter(t => t !== tag));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +60,7 @@ export const TransactionModal = ({ onClose, editId }: TransactionModalProps) => 
       subcategoryId: subcategoryId || undefined, accountId,
       toAccountId: type === 'transfer' ? toAccountId : undefined,
       date, comment: comment || undefined,
-      receiptPhoto: receipt || undefined,
+      tags: tags.length > 0 ? tags : undefined,
     };
 
     if (editId) {
@@ -175,26 +183,33 @@ export const TransactionModal = ({ onClose, editId }: TransactionModalProps) => 
                 focus:outline-none focus:border-brand transition-colors text-sm placeholder-text-muted" />
           </div>
 
-          {/* Receipt */}
+          {/* Tags */}
           <div>
-            <label className="block text-text-secondary text-xs mb-1.5">Чек (фото)</label>
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
-            {receipt ? (
-              <div className="relative">
-                <img src={receipt} alt="Чек" className="w-full h-32 object-cover rounded-xl" />
-                <button type="button" onClick={() => setReceipt('')}
-                  className="absolute top-2 right-2 p-1 rounded-full bg-black/50 text-white">
-                  <X size={14} />
-                </button>
-              </div>
-            ) : (
-              <button type="button" onClick={() => fileRef.current?.click()}
-                className="w-full py-3 border border-dashed border-bg-border rounded-xl text-text-muted text-sm
-                  hover:border-brand/50 hover:text-brand transition-all flex items-center justify-center gap-2">
-                <Camera size={16} />
-                Прикрепить фото чека
-              </button>
-            )}
+            <label className="block text-text-secondary text-xs mb-1.5">Теги</label>
+            <div className={clsx(
+              'flex flex-wrap gap-1.5 items-center bg-bg-secondary border rounded-xl px-3 py-2.5 min-h-[46px] transition-colors',
+              'border-bg-border focus-within:border-brand'
+            )}>
+              {tags.map(tag => (
+                <span key={tag} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand/15 text-brand text-xs font-medium">
+                  <Tag size={10} />
+                  {tag}
+                  <button type="button" onClick={() => removeTag(tag)}
+                    className="ml-0.5 hover:text-expense transition-colors leading-none">
+                    <X size={10} />
+                  </button>
+                </span>
+              ))}
+              <input
+                type="text"
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={handleTagKeyDown}
+                onBlur={addTag}
+                placeholder={tags.length === 0 ? 'Тег + Enter...' : ''}
+                className="flex-1 min-w-20 bg-transparent text-text-primary text-sm focus:outline-none placeholder-text-muted"
+              />
+            </div>
           </div>
 
           {/* Submit */}

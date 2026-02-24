@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Plus, Edit2, Trash2, ArrowLeftRight, Banknote, CreditCard, Wallet, PiggyBank, TrendingUp, Eye, EyeOff } from 'lucide-react';
+import { Plus, Edit2, Trash2, ArrowLeftRight, Banknote, CreditCard, Wallet, PiggyBank, TrendingUp, Eye, EyeOff, SlidersHorizontal, X, Check } from 'lucide-react';
 import { clsx } from 'clsx';
+import { ConfirmDialog } from '../UI/ConfirmDialog';
 import toast from 'react-hot-toast';
 import { useFinanceStore } from '../../store/useFinanceStore';
 import { AccountModal } from './AccountModal';
@@ -13,23 +14,44 @@ const accountIcons: Record<string, React.ElementType> = {
 };
 
 export const Accounts = () => {
-  const { accounts, transactions, deleteAccount, getAccountBalance } = useFinanceStore();
+  const { accounts, transactions, deleteAccount, updateAccount, getAccountBalance } = useFinanceStore();
   const [showModal, setShowModal] = useState(false);
   const [editAccount, setEditAccount] = useState<Account | undefined>();
   const [showTransfer, setShowTransfer] = useState(false);
   const [hiddenBalances, setHiddenBalances] = useState(false);
+  const [adjustId, setAdjustId] = useState<string | null>(null);
+  const [adjustValue, setAdjustValue] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const activeAccounts = accounts.filter(a => !a.isArchived);
   const totalBalance = activeAccounts.reduce((sum, a) => sum + getAccountBalance(a.id), 0);
+
+  const openAdjust = (accId: string, currentBalance: number) => {
+    setAdjustId(accId);
+    setAdjustValue(currentBalance.toFixed(2));
+  };
+
+  const handleAdjust = (acc: Account) => {
+    const target = parseFloat(adjustValue);
+    if (isNaN(target)) { toast.error('Введите корректную сумму'); return; }
+    const current = getAccountBalance(acc.id);
+    const diff = target - current;
+    updateAccount(acc.id, { initialBalance: acc.initialBalance + diff });
+    toast.success(`Баланс скорректирован на ${diff >= 0 ? '+' : ''}${diff.toFixed(2)} ₽`);
+    setAdjustId(null);
+    setAdjustValue('');
+  };
 
   const handleDelete = (acc: Account) => {
     const hasTx = transactions.some(t => t.accountId === acc.id);
     if (hasTx) {
       toast.error('Нельзя удалить счёт с транзакциями. Заархивируйте его.');
+      setConfirmDeleteId(null);
       return;
     }
     deleteAccount(acc.id);
     toast.success('Счёт удалён');
+    setConfirmDeleteId(null);
   };
 
   const accountTypeLabel: Record<string, string> = {
@@ -92,11 +114,16 @@ export const Accounts = () => {
                   </div>
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => openAdjust(acc.id, getAccountBalance(acc.id))}
+                    title="Скорректировать баланс"
+                    className="p-1.5 rounded-lg text-text-muted hover:text-warning hover:bg-warning/10 transition-colors">
+                    <SlidersHorizontal size={14} />
+                  </button>
                   <button onClick={() => { setEditAccount(acc); setShowModal(true); }}
                     className="p-1.5 rounded-lg text-text-muted hover:text-brand hover:bg-brand/10 transition-colors">
                     <Edit2 size={14} />
                   </button>
-                  <button onClick={() => handleDelete(acc)}
+                  <button onClick={() => setConfirmDeleteId(acc.id)}
                     className="p-1.5 rounded-lg text-text-muted hover:text-expense hover:bg-expense/10 transition-colors">
                     <Trash2 size={14} />
                   </button>
@@ -106,9 +133,31 @@ export const Accounts = () => {
               {/* Balance */}
               <div className="mb-4">
                 <p className="text-text-muted text-xs mb-0.5">Текущий баланс</p>
-                <p className={clsx('text-2xl font-bold font-mono', balance >= 0 ? 'text-text-primary' : 'text-expense')}>
-                  {hiddenBalances ? '••••••' : formatMoney(balance, acc.currency)}
-                </p>
+                {adjustId === acc.id ? (
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="relative flex-1">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary text-sm font-mono">₽</span>
+                      <input
+                        type="number" value={adjustValue} onChange={e => setAdjustValue(e.target.value)}
+                        autoFocus step="0.01"
+                        className="w-full bg-bg-secondary border border-warning/50 rounded-xl pl-7 pr-3 py-2 text-text-primary font-mono text-base
+                          focus:outline-none focus:border-warning transition-colors"
+                      />
+                    </div>
+                    <button onClick={() => handleAdjust(acc)}
+                      className="p-2 rounded-xl bg-income/15 text-income hover:bg-income/25 transition-colors flex-shrink-0">
+                      <Check size={15} />
+                    </button>
+                    <button onClick={() => setAdjustId(null)}
+                      className="p-2 rounded-xl bg-bg-hover text-text-muted hover:text-text-primary transition-colors flex-shrink-0">
+                      <X size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <p className={clsx('text-2xl font-bold font-mono', balance >= 0 ? 'text-text-primary' : 'text-expense')}>
+                    {hiddenBalances ? '••••••' : formatMoney(balance, acc.currency)}
+                  </p>
+                )}
               </div>
 
               {/* Stats */}
@@ -144,6 +193,15 @@ export const Accounts = () => {
         </button>
       </div>
 
+      {/* Empty state */}
+      {activeAccounts.length === 0 && (
+        <div className="text-center py-16">
+          <Wallet size={48} className="mx-auto mb-4 text-text-muted opacity-30" />
+          <p className="text-text-secondary font-medium mb-1">Нет активных счетов</p>
+          <p className="text-text-muted text-sm">Добавьте первый счёт для отслеживания финансов</p>
+        </div>
+      )}
+
       {/* Archived */}
       {accounts.filter(a => a.isArchived).length > 0 && (
         <div>
@@ -165,6 +223,17 @@ export const Accounts = () => {
       {showTransfer && (
         <TransactionModal onClose={() => setShowTransfer(false)} />
       )}
+      {confirmDeleteId && (() => {
+        const acc = accounts.find(a => a.id === confirmDeleteId)!;
+        return (
+          <ConfirmDialog
+            title={`Удалить «${acc?.name}»?`}
+            message="Это действие нельзя отменить."
+            onConfirm={() => handleDelete(acc)}
+            onCancel={() => setConfirmDeleteId(null)}
+          />
+        );
+      })()}
     </div>
   );
 };

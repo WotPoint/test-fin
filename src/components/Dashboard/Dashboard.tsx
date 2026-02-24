@@ -144,13 +144,13 @@ export const Dashboard = () => {
                   <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e2d4a" vertical={false} />
-              <XAxis dataKey="date" tick={{ fill: '#8898b4', fontSize: 10 }} axisLine={false} tickLine={false} interval={6} />
-              <YAxis tick={{ fill: '#8898b4', fontSize: 10 }} axisLine={false} tickLine={false}
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--bg-border)" vertical={false} />
+              <XAxis dataKey="date" tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} axisLine={false} tickLine={false} interval={6} />
+              <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} axisLine={false} tickLine={false}
                 tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}К` : `${v}`} width={40} />
               <Tooltip
-                contentStyle={{ background: '#131929', border: '1px solid #1e2d4a', borderRadius: 8 }}
-                labelStyle={{ color: '#8898b4' }}
+                contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }}
+                labelStyle={{ color: 'var(--text-secondary)' }}
                 formatter={(v: number, name) => [formatMoney(v), name === 'income' ? 'Доход' : 'Расход']}
               />
               <Area type="monotone" dataKey="income" stroke="#22c55e" strokeWidth={2} fill="url(#incGrad)" />
@@ -173,7 +173,7 @@ export const Dashboard = () => {
                     ))}
                   </Pie>
                   <Tooltip
-                    contentStyle={{ background: '#131929', border: '1px solid #1e2d4a', borderRadius: 8 }}
+                    contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }}
                     formatter={(v: number) => [formatMoney(v), '']}
                   />
                 </PieChart>
@@ -205,12 +205,12 @@ export const Dashboard = () => {
           <h3 className="text-text-primary font-semibold mb-4">Сравнение месяцев</h3>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={monthComparison} barSize={10}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e2d4a" vertical={false} />
-              <XAxis dataKey="month" tick={{ fill: '#8898b4', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#8898b4', fontSize: 10 }} axisLine={false} tickLine={false}
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--bg-border)" vertical={false} />
+              <XAxis dataKey="month" tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} axisLine={false} tickLine={false}
                 tickFormatter={v => `${(v / 1000).toFixed(0)}К`} width={35} />
               <Tooltip
-                contentStyle={{ background: '#131929', border: '1px solid #1e2d4a', borderRadius: 8 }}
+                contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }}
                 formatter={(v: number, n) => [formatMoney(v), n === 'income' ? 'Доход' : 'Расход']}
               />
               <Bar dataKey="income" fill="#22c55e" radius={[3, 3, 0, 0]} />
@@ -225,32 +225,40 @@ export const Dashboard = () => {
             <h3 className="text-text-primary font-semibold">Последние операции</h3>
             <a href="/transactions" className="text-brand text-xs hover:underline">Все</a>
           </div>
-          <div className="space-y-3">
-            {recent.map(tx => {
-              const cat = categories.find(c => c.id === tx.categoryId);
-              return (
-                <div key={tx.id} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm"
-                      style={{ background: cat?.color + '20', color: cat?.color }}>
-                      {cat?.name[0] || '?'}
+          {recent.length > 0 ? (
+            <div className="space-y-3">
+              {recent.map(tx => {
+                const cat = categories.find(c => c.id === tx.categoryId);
+                return (
+                  <div key={tx.id} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm"
+                        style={{ background: cat?.color + '20', color: cat?.color }}>
+                        {cat?.name[0] || '?'}
+                      </div>
+                      <div>
+                        <p className="text-text-primary text-xs font-medium leading-tight">
+                          {tx.comment || cat?.name}
+                        </p>
+                        <p className="text-text-muted text-xs">{formatDateShort(tx.date)}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-text-primary text-xs font-medium leading-tight">
-                        {tx.comment || cat?.name}
-                      </p>
-                      <p className="text-text-muted text-xs">{formatDateShort(tx.date)}</p>
-                    </div>
+                    <span className={clsx('font-mono font-semibold text-sm',
+                      tx.type === 'income' ? 'text-income' : tx.type === 'expense' ? 'text-expense' : 'text-text-secondary')}>
+                      {tx.type === 'income' ? '+' : tx.type === 'expense' ? '-' : ''}
+                      {formatMoney(tx.amount, 'RUB', true)}
+                    </span>
                   </div>
-                  <span className={clsx('font-mono font-semibold text-sm',
-                    tx.type === 'income' ? 'text-income' : tx.type === 'expense' ? 'text-expense' : 'text-text-secondary')}>
-                    {tx.type === 'income' ? '+' : tx.type === 'expense' ? '-' : ''}
-                    {formatMoney(tx.amount, 'RUB', true)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-32 text-center">
+              <BarChart2 size={32} className="text-text-muted opacity-30 mb-2" />
+              <p className="text-text-muted text-sm">Нет транзакций</p>
+              <p className="text-text-muted text-xs mt-1">Добавьте первую операцию</p>
+            </div>
+          )}
         </div>
 
         {/* Goals */}

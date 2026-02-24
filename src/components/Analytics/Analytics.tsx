@@ -162,13 +162,13 @@ export const Analytics = () => {
         <h3 className="text-text-primary font-semibold mb-4">Доходы vs Расходы</h3>
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={monthlyData} barGap={4}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e2d4a" vertical={false} />
-            <XAxis dataKey="month" tick={{ fill: '#8898b4', fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#8898b4', fontSize: 11 }} axisLine={false} tickLine={false}
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--bg-border)" vertical={false} />
+            <XAxis dataKey="month" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false}
               tickFormatter={v => `${(v / 1000).toFixed(0)}К`} width={40} />
             <Tooltip content={<CustomTooltip />} />
             <Legend formatter={v => v === 'income' ? 'Доходы' : v === 'expense' ? 'Расходы' : 'Сбережения'}
-              wrapperStyle={{ color: '#8898b4', fontSize: 12 }} />
+              wrapperStyle={{ color: 'var(--text-secondary)', fontSize: 12 }} />
             <Bar dataKey="income" fill="#22c55e" radius={[4, 4, 0, 0]} maxBarSize={40} />
             <Bar dataKey="expense" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
             <Bar dataKey="savings" fill="#00d4aa" radius={[4, 4, 0, 0]} maxBarSize={40} />
@@ -182,9 +182,9 @@ export const Analytics = () => {
           <h3 className="text-text-primary font-semibold mb-4">Динамика чистого дохода</h3>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e2d4a" vertical={false} />
-              <XAxis dataKey="month" tick={{ fill: '#8898b4', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#8898b4', fontSize: 11 }} axisLine={false} tickLine={false}
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--bg-border)" vertical={false} />
+              <XAxis dataKey="month" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false}
                 tickFormatter={v => `${(v / 1000).toFixed(0)}К`} width={40} />
               <Tooltip content={<CustomTooltip />} />
               <Line type="monotone" dataKey="net" stroke="#00d4aa" strokeWidth={2.5} dot={{ fill: '#00d4aa', r: 4 }}
@@ -204,7 +204,7 @@ export const Analytics = () => {
                     paddingAngle={2} dataKey="value">
                     {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
-                  <Tooltip formatter={(v: number) => formatMoney(v)} contentStyle={{ background: '#131929', border: '1px solid #1e2d4a', borderRadius: 8 }} />
+                  <Tooltip formatter={(v: number) => formatMoney(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex-1 space-y-2">
@@ -239,11 +239,11 @@ export const Analytics = () => {
                 <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e2d4a" vertical={false} />
-            <XAxis dataKey="day" tick={{ fill: '#8898b4', fontSize: 10 }} axisLine={false} tickLine={false} interval={4} />
-            <YAxis tick={{ fill: '#8898b4', fontSize: 10 }} axisLine={false} tickLine={false}
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--bg-border)" vertical={false} />
+            <XAxis dataKey="day" tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} axisLine={false} tickLine={false} interval={4} />
+            <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} axisLine={false} tickLine={false}
               tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}К` : `${v}`} width={35} />
-            <Tooltip contentStyle={{ background: '#131929', border: '1px solid #1e2d4a', borderRadius: 8 }}
+            <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }}
               formatter={(v: number) => [formatMoney(v), 'Расход']} />
             <Area type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2} fill="url(#expDay)" />
           </AreaChart>
@@ -295,11 +295,11 @@ export const Analytics = () => {
                   <stop offset="95%" stopColor="#00d4aa" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e2d4a" vertical={false} />
-              <XAxis dataKey="month" tick={{ fill: '#8898b4', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#8898b4', fontSize: 11 }} axisLine={false} tickLine={false}
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--bg-border)" vertical={false} />
+              <XAxis dataKey="month" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false}
                 tickFormatter={v => `${(v / 1000).toFixed(0)}К`} width={40} />
-              <Tooltip contentStyle={{ background: '#131929', border: '1px solid #1e2d4a', borderRadius: 8 }}
+              <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }}
                 formatter={(v: number) => [formatMoney(v), 'Баланс']} />
               <Area type="monotone" dataKey="balance" stroke="#00d4aa" strokeWidth={2.5}
                 strokeDasharray="0"

@@ -259,7 +259,7 @@ export const useFinanceStore = create<FinanceStore>()(
       },
     })),
     {
-      name: 'fintrack-storage',
+      name: 'fintrack-storage-v2',
       storage: createJSONStorage(() => localStorage),
     }
   )

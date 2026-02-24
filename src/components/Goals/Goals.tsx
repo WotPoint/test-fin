@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Target, Trash2, Edit2, CheckCircle2, PlusCircle, Plane, Shield, Laptop, Home, Car, Star, Gift, Smartphone } from 'lucide-react';
 import { clsx } from 'clsx';
+import { ConfirmDialog } from '../UI/ConfirmDialog';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useFinanceStore } from '../../store/useFinanceStore';
@@ -18,6 +19,7 @@ export const Goals = () => {
   const [editGoal, setEditGoal] = useState<Goal | undefined>();
   const [addingTo, setAddingTo] = useState<string>('');
   const [addAmount, setAddAmount] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const activeGoals = goals.filter(g => !g.isCompleted);
   const completedGoals = goals.filter(g => g.isCompleted);
@@ -33,6 +35,7 @@ export const Goals = () => {
   const handleDelete = (id: string) => {
     deleteGoal(id);
     toast.success('Цель удалена');
+    setConfirmDeleteId(null);
   };
 
   const GoalCard = ({ goal }: { goal: Goal }) => {
@@ -65,7 +68,7 @@ export const Goals = () => {
               className="p-1.5 rounded-lg text-text-muted hover:text-brand hover:bg-brand/10 transition-colors">
               <Edit2 size={14} />
             </button>
-            <button onClick={() => handleDelete(goal.id)}
+            <button onClick={() => setConfirmDeleteId(goal.id)}
               className="p-1.5 rounded-lg text-text-muted hover:text-expense hover:bg-expense/10 transition-colors">
               <Trash2 size={14} />
             </button>
@@ -206,6 +209,14 @@ export const Goals = () => {
 
       {showModal && (
         <GoalModal onClose={() => { setShowModal(false); setEditGoal(undefined); }} goal={editGoal} />
+      )}
+      {confirmDeleteId && (
+        <ConfirmDialog
+          title="Удалить цель?"
+          message="Прогресс накоплений будет потерян."
+          onConfirm={() => handleDelete(confirmDeleteId)}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
       )}
     </div>
   );
