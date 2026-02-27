@@ -89,7 +89,8 @@ export const Accounts = () => {
         </div>
       </div>
 
-      {/* Accounts grid */}
+      {/* Accounts grid OR empty state */}
+      {activeAccounts.length > 0 ? (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {activeAccounts.map(acc => {
           const balance = getAccountBalance(acc.id);
@@ -192,9 +193,7 @@ export const Accounts = () => {
           <span className="text-sm">Добавить счёт</span>
         </button>
       </div>
-
-      {/* Empty state */}
-      {activeAccounts.length === 0 && (
+      ) : (
         <div className="text-center py-20">
           <Wallet size={48} className="mx-auto mb-4 text-text-muted opacity-30" />
           <p className="text-text-secondary font-medium mb-2">Нет активных счетов</p>

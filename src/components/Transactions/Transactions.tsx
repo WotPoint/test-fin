@@ -48,7 +48,7 @@ export const Transactions = () => {
       return sortAsc ? cmp : -cmp;
     });
     return list;
-  }, [transactions, search, filterType, filterCat, filterAccount, sortKey, sortAsc]);
+  }, [transactions, categories, search, filterType, filterCat, filterAccount, sortKey, sortAsc]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const safePage = Math.min(page, totalPages);

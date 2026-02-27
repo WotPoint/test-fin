@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Edit2, Trash2, AlertTriangle, TrendingDown, TrendingUp, ChevronLeft, ChevronRight, PieChart } from 'lucide-react';
+import { Plus, Edit2, Trash2, AlertTriangle, TrendingDown, TrendingUp, ChevronLeft, ChevronRight, PieChart, Pencil } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import { useFinanceStore } from '../../store/useFinanceStore';
@@ -9,7 +9,7 @@ import { formatMoney, getMonthName } from '../../utils/formatters';
 import { Category } from '../../types';
 
 export const Budgets = () => {
-  const { categories, budgets, transactions, deleteBudget, deleteCategory, getCategorySpending, getMonthlyStats } = useFinanceStore();
+  const { categories, budgets, transactions, deleteCategory, getCategorySpending, getMonthlyStats } = useFinanceStore();
   const [showCatModal, setShowCatModal] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [editCategory, setEditCategory] = useState<Category | undefined>();
@@ -165,7 +165,13 @@ export const Budgets = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    <button onClick={() => { setEditCategory(cat); setShowCatModal(true); }}
+                      title="Редактировать категорию"
+                      className="p-1.5 rounded-lg text-text-muted hover:text-brand hover:bg-brand/10 transition-colors">
+                      <Pencil size={13} />
+                    </button>
                     <button onClick={() => { setEditBudgetCat(cat.id); setShowBudgetModal(true); }}
+                      title="Установить бюджет"
                       className="p-1.5 rounded-lg text-text-muted hover:text-brand hover:bg-brand/10 transition-colors">
                       <Edit2 size={13} />
                     </button>
@@ -232,12 +238,19 @@ export const Budgets = () => {
                     <p className="text-text-muted text-xs">{txCount} транз.</p>
                   </div>
                 </div>
-                {!cat.isDefault && (
-                  <button onClick={() => handleDeleteCategory(cat)}
-                    className="p-1.5 rounded-lg text-text-muted hover:text-expense hover:bg-expense/10 transition-colors opacity-0 group-hover:opacity-100">
-                    <Trash2 size={12} />
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => { setEditCategory(cat); setShowCatModal(true); }}
+                    title="Редактировать категорию"
+                    className="p-1.5 rounded-lg text-text-muted hover:text-brand hover:bg-brand/10 transition-colors">
+                    <Pencil size={12} />
                   </button>
-                )}
+                  {!cat.isDefault && (
+                    <button onClick={() => handleDeleteCategory(cat)}
+                      className="p-1.5 rounded-lg text-text-muted hover:text-expense hover:bg-expense/10 transition-colors">
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
