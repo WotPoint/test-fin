@@ -220,9 +220,27 @@ export const Transactions = () => {
       </div>
 
       {filtered.length === 0 && (
-        <div className="text-center py-16 text-text-muted">
-          <ArrowUpDown size={40} className="mx-auto mb-3 opacity-30" />
-          <p>Транзакции не найдены</p>
+        <div className="text-center py-20">
+          <ArrowUpDown size={48} className="mx-auto mb-4 text-text-muted opacity-30" />
+          {transactions.length === 0 ? (
+            <>
+              <p className="text-text-secondary font-medium mb-2">Нет транзакций</p>
+              <p className="text-text-muted text-sm mb-6">Добавьте первую транзакцию для начала отслеживания</p>
+              <button onClick={() => { setEditId(undefined); setShowModal(true); }}
+                className="px-6 py-3 rounded-xl bg-brand text-bg-primary font-semibold hover:bg-brand-light transition-all">
+                Добавить транзакцию
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-text-secondary font-medium mb-2">Ничего не найдено</p>
+              <p className="text-text-muted text-sm mb-4">Попробуйте изменить фильтры или поисковый запрос</p>
+              <button onClick={() => { setSearch(''); setFilterType(''); setFilterCat(''); setFilterAccount(''); setPage(1); }}
+                className="px-4 py-2 rounded-xl border border-bg-border text-text-secondary hover:text-text-primary hover:border-brand/40 transition-all text-sm">
+                Сбросить фильтры
+              </button>
+            </>
+          )}
         </div>
       )}
 

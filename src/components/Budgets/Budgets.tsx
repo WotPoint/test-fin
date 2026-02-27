@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Edit2, Trash2, AlertTriangle, TrendingDown, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Edit2, Trash2, AlertTriangle, TrendingDown, TrendingUp, ChevronLeft, ChevronRight, PieChart } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import { useFinanceStore } from '../../store/useFinanceStore';
@@ -114,6 +114,17 @@ export const Budgets = () => {
           <span className="w-2 h-2 rounded-full bg-expense" />
           Расходные категории и бюджеты
         </h3>
+        {expenseCategories.length === 0 && (
+          <div className="text-center py-12 bg-bg-card border border-dashed border-bg-border rounded-2xl">
+            <PieChart size={40} className="mx-auto mb-3 text-text-muted opacity-30" />
+            <p className="text-text-secondary font-medium mb-1">Нет категорий расходов</p>
+            <p className="text-text-muted text-sm mb-4">Создайте категорию для планирования бюджета</p>
+            <button onClick={() => setShowCatModal(true)}
+              className="px-5 py-2.5 rounded-xl bg-brand text-bg-primary font-semibold text-sm hover:bg-brand-light transition-all">
+              Добавить категорию
+            </button>
+          </div>
+        )}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
           {expenseCategories.map(cat => {
             const budget = getBudgetForCat(cat.id);

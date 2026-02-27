@@ -195,10 +195,14 @@ export const Accounts = () => {
 
       {/* Empty state */}
       {activeAccounts.length === 0 && (
-        <div className="text-center py-16">
+        <div className="text-center py-20">
           <Wallet size={48} className="mx-auto mb-4 text-text-muted opacity-30" />
-          <p className="text-text-secondary font-medium mb-1">Нет активных счетов</p>
-          <p className="text-text-muted text-sm">Добавьте первый счёт для отслеживания финансов</p>
+          <p className="text-text-secondary font-medium mb-2">Нет активных счетов</p>
+          <p className="text-text-muted text-sm mb-6">Добавьте первый счёт для отслеживания финансов</p>
+          <button onClick={() => { setEditAccount(undefined); setShowModal(true); }}
+            className="px-6 py-3 rounded-xl bg-brand text-bg-primary font-semibold hover:bg-brand-light transition-all">
+            Добавить счёт
+          </button>
         </div>
       )}
 
