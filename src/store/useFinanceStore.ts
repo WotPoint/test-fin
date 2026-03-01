@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { format, parseISO, isBefore, isEqual, startOfDay, addDays, addWeeks, addMonths, addQuarters, addYears } from 'date-fns';
 import type {
   Account, Category, Subcategory, Transaction, RecurringTransaction,
-  Budget, Goal, Currency, AccountType, RecurringFrequency, TransactionType
+  Budget, Goal, GoalContribution, Currency, AccountType, RecurringFrequency, TransactionType
 } from '../types';
 import {
   defaultAccounts, defaultCategories, defaultSubcategories,
@@ -54,7 +54,10 @@ interface FinanceStore {
   addGoal: (goal: Omit<Goal, 'id' | 'createdAt' | 'isCompleted'>) => void;
   updateGoal: (id: string, updates: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
-  addToGoal: (id: string, amount: number) => void;
+  addToGoal: (id: string, amount: number, comment?: string) => void;
+
+  // Category order
+  reorderCategories: (ids: string[]) => void;
 
   // Selectors
   getAccountBalance: (accountId: string) => number;
@@ -62,6 +65,16 @@ interface FinanceStore {
   getMonthlyStats: (month: number, year: number) => { income: number; expense: number; net: number };
   getCategorySpending: (month: number, year: number) => Record<string, number>;
   getBudgetUsage: (categoryId: string, month: number, year: number) => { budget: number; spent: number; percentage: number };
+  getAppNotifications: () => AppNotification[];
+  getTagStats: (startDate: string, endDate: string) => { tag: string; amount: number; count: number }[];
+}
+
+export interface AppNotification {
+  id: string;
+  type: 'budget_over' | 'budget_alert' | 'goal_deadline' | 'goal_overdue' | 'recurring_today';
+  title: string;
+  message: string;
+  severity: 'red' | 'yellow' | 'blue';
 }
 
 const nextDate = (date: string, freq: RecurringFrequency): string => {
@@ -189,12 +202,28 @@ export const useFinanceStore = create<FinanceStore>()(
       deleteGoal: (id) => set((s) => {
         s.goals = s.goals.filter(g => g.id !== id);
       }),
-      addToGoal: (id, amount) => set((s) => {
+      addToGoal: (id, amount, comment) => set((s) => {
         const g = s.goals.find(g => g.id === id);
         if (g) {
           g.currentAmount = Math.min(g.currentAmount + amount, g.targetAmount);
           if (g.currentAmount >= g.targetAmount) g.isCompleted = true;
+          if (!g.contributions) g.contributions = [];
+          const contrib: GoalContribution = {
+            id: uuidv4(),
+            amount,
+            date: format(new Date(), 'yyyy-MM-dd'),
+            comment,
+          };
+          g.contributions.push(contrib);
         }
+      }),
+
+      reorderCategories: (ids) => set((s) => {
+        const ordered = ids
+          .map(id => s.categories.find(c => c.id === id))
+          .filter(Boolean) as typeof s.categories;
+        const rest = s.categories.filter(c => !ids.includes(c.id));
+        s.categories = [...ordered, ...rest];
       }),
 
       getAccountBalance: (accountId) => {
@@ -256,6 +285,97 @@ export const useFinanceStore = create<FinanceStore>()(
           spent,
           percentage: budgetAmount > 0 ? Math.round((spent / budgetAmount) * 100) : 0,
         };
+      },
+
+      getAppNotifications: () => {
+        const { budgets, goals, recurringTransactions, categories } = get();
+        const now = new Date();
+        const month = now.getMonth() + 1;
+        const year = now.getFullYear();
+        const notifications: AppNotification[] = [];
+
+        // Budget notifications
+        budgets.filter(b => b.month === month && b.year === year).forEach(b => {
+          const { spent, percentage } = get().getBudgetUsage(b.categoryId, month, year);
+          const cat = categories.find(c => c.id === b.categoryId);
+          const name = cat?.name || 'Категория';
+          if (percentage >= 100) {
+            notifications.push({
+              id: `budget-over-${b.id}`,
+              type: 'budget_over',
+              title: `Бюджет превышен: ${name}`,
+              message: `Потрачено ${Math.round(spent)} ₽ из ${b.amount} ₽`,
+              severity: 'red',
+            });
+          } else if (percentage >= b.alertThreshold) {
+            notifications.push({
+              id: `budget-alert-${b.id}`,
+              type: 'budget_alert',
+              title: `Бюджет на исходе: ${name}`,
+              message: `Использовано ${percentage}% (${Math.round(spent)} из ${b.amount} ₽)`,
+              severity: 'yellow',
+            });
+          }
+        });
+
+        // Goal deadline notifications
+        goals.filter(g => !g.isCompleted && g.deadline).forEach(g => {
+          const deadline = parseISO(g.deadline!);
+          const diffDays = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays < 0) {
+            notifications.push({
+              id: `goal-overdue-${g.id}`,
+              type: 'goal_overdue',
+              title: `Дедлайн просрочен: ${g.name}`,
+              message: `Срок был ${format(deadline, 'dd.MM.yyyy')}`,
+              severity: 'red',
+            });
+          } else if (diffDays <= 7) {
+            notifications.push({
+              id: `goal-deadline-${g.id}`,
+              type: 'goal_deadline',
+              title: `Дедлайн цели: ${g.name}`,
+              message: `Осталось ${diffDays} дн. до ${format(deadline, 'dd.MM.yyyy')}`,
+              severity: 'yellow',
+            });
+          }
+        });
+
+        // Recurring today/tomorrow
+        const todayStr = format(now, 'yyyy-MM-dd');
+        const tomorrowStr = format(addDays(now, 1), 'yyyy-MM-dd');
+        recurringTransactions.filter(r => r.isActive && (r.nextDate === todayStr || r.nextDate === tomorrowStr)).forEach(r => {
+          notifications.push({
+            id: `recurring-${r.id}`,
+            type: 'recurring_today',
+            title: r.nextDate === todayStr ? `Платёж сегодня: ${r.name}` : `Платёж завтра: ${r.name}`,
+            message: `${r.amount.toLocaleString('ru-RU')} ₽`,
+            severity: 'blue',
+          });
+        });
+
+        return notifications;
+      },
+
+      getTagStats: (startDate, endDate) => {
+        const { transactions } = get();
+        const start = parseISO(startDate);
+        const end = parseISO(endDate);
+        const tagMap: Record<string, { amount: number; count: number }> = {};
+        transactions.forEach(tx => {
+          if (tx.type !== 'expense') return;
+          const d = parseISO(tx.date);
+          if (isBefore(d, start) || isBefore(end, d)) return;
+          (tx.tags || []).forEach(tag => {
+            if (!tagMap[tag]) tagMap[tag] = { amount: 0, count: 0 };
+            tagMap[tag].amount += tx.amount;
+            tagMap[tag].count += 1;
+          });
+        });
+        return Object.entries(tagMap)
+          .map(([tag, s]) => ({ tag, ...s }))
+          .sort((a, b) => b.amount - a.amount)
+          .slice(0, 10);
       },
     })),
     {

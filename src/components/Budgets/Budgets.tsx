@@ -1,15 +1,143 @@
 import { useState, useMemo } from 'react';
-import { Plus, Edit2, Trash2, AlertTriangle, TrendingDown, TrendingUp, ChevronLeft, ChevronRight, PieChart, Pencil } from 'lucide-react';
+import { Plus, Edit2, Trash2, AlertTriangle, TrendingDown, TrendingUp, ChevronLeft, ChevronRight, PieChart, Pencil, GripVertical } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor,
+  useSensor, useSensors, DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, sortableKeyboardCoordinates, rectSortingStrategy,
+  useSortable, arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useFinanceStore } from '../../store/useFinanceStore';
 import { CategoryModal } from './CategoryModal';
 import { BudgetSetModal } from './BudgetSetModal';
 import { formatMoney, getMonthName } from '../../utils/formatters';
 import { Category } from '../../types';
 
+const SortableCategoryCard = ({
+  cat, spent, selectedMonth, selectedYear, onEdit, onSetBudget, onDelete,
+}: {
+  cat: Category;
+  spent: number;
+  selectedMonth: number;
+  selectedYear: number;
+  onEdit: () => void;
+  onSetBudget: () => void;
+  onDelete: () => void;
+}) => {
+  const { budgets } = useFinanceStore();
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cat.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const budget = budgets.find(b => b.categoryId === cat.id && b.month === selectedMonth && b.year === selectedYear);
+  const pct = budget ? Math.min(Math.round((spent / budget.amount) * 100), 100) : 0;
+  const isOver = budget && spent > budget.amount;
+  const isWarning = budget && pct >= (budget.alertThreshold || 80) && !isOver;
+
+  const prevSpending = (() => {
+    const pm = selectedMonth === 1 ? 12 : selectedMonth - 1;
+    const py = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
+    const { transactions: txs } = useFinanceStore.getState();
+    return txs.filter(t => {
+      const d = new Date(t.date);
+      return t.categoryId === cat.id && t.type === 'expense' && d.getMonth() + 1 === pm && d.getFullYear() === py;
+    }).reduce((s, t) => s + t.amount, 0);
+  })();
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={clsx('bg-bg-card border rounded-2xl p-4 transition-colors',
+        isOver ? 'border-expense/40' : isWarning ? 'border-warning/40' : 'border-bg-border hover:border-brand/30',
+        isDragging && 'shadow-card-lg'
+      )}
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-3">
+          {/* Drag handle */}
+          <button
+            {...attributes}
+            {...listeners}
+            className="text-text-muted/40 hover:text-text-muted transition-colors cursor-grab active:cursor-grabbing touch-none flex-shrink-0"
+          >
+            <GripVertical size={14} />
+          </button>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+            style={{ background: cat.color + '20', color: cat.color }}>
+            <span className="text-sm font-bold">{cat.name[0]}</span>
+          </div>
+          <div>
+            <p className="text-text-primary text-sm font-medium flex items-center gap-1.5">
+              {cat.name}
+              {isOver && <AlertTriangle size={12} className="text-expense" />}
+              {isWarning && <AlertTriangle size={12} className="text-warning" />}
+            </p>
+            {prevSpending > 0 && (
+              <p className={clsx('text-xs', spent > prevSpending ? 'text-expense' : 'text-income')}>
+                {spent > prevSpending ? '↑' : '↓'} {Math.abs(Math.round(((spent - prevSpending) / prevSpending) * 100))}% vs пред. мес.
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={onEdit} title="Редактировать"
+            className="p-1.5 rounded-lg text-text-muted hover:text-brand hover:bg-brand/10 transition-colors">
+            <Pencil size={13} />
+          </button>
+          <button onClick={onSetBudget} title="Установить бюджет"
+            className="p-1.5 rounded-lg text-text-muted hover:text-brand hover:bg-brand/10 transition-colors">
+            <Edit2 size={13} />
+          </button>
+          {!cat.isDefault && (
+            <button onClick={onDelete}
+              className="p-1.5 rounded-lg text-text-muted hover:text-expense hover:bg-expense/10 transition-colors">
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex justify-between text-xs">
+          <span className={clsx(isOver ? 'text-expense' : 'text-text-secondary')}>
+            {formatMoney(spent)}
+          </span>
+          {budget ? (
+            <span className="text-text-muted">из {formatMoney(budget.amount)}</span>
+          ) : (
+            <button onClick={onSetBudget} className="text-brand hover:underline">
+              + Установить бюджет
+            </button>
+          )}
+        </div>
+        {budget && (
+          <div className="h-2 rounded-full bg-bg-border overflow-hidden">
+            <div className={clsx('h-full rounded-full transition-all',
+              isOver ? 'bg-expense' : isWarning ? 'bg-warning' : 'bg-brand')}
+              style={{ width: `${pct}%` }} />
+          </div>
+        )}
+        {budget && (
+          <p className={clsx('text-xs', isOver ? 'text-expense' : 'text-text-muted')}>
+            {isOver ? `Превышение на ${formatMoney(spent - budget.amount)}` : `Остаток: ${formatMoney(budget.amount - spent)}`}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const Budgets = () => {
-  const { categories, budgets, transactions, deleteCategory, getCategorySpending, getMonthlyStats } = useFinanceStore();
+  const { categories, budgets, transactions, deleteCategory, getCategorySpending, getMonthlyStats, reorderCategories } = useFinanceStore();
   const [showCatModal, setShowCatModal] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [editCategory, setEditCategory] = useState<Category | undefined>();
@@ -18,6 +146,11 @@ export const Budgets = () => {
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const goMonth = (delta: number) => {
     let m = selectedMonth + delta;
@@ -38,9 +171,6 @@ export const Budgets = () => {
   const expenseCategories = categories.filter(c => c.type === 'expense' && !c.isArchived);
   const incomeCategories = categories.filter(c => c.type === 'income' && !c.isArchived);
 
-  const getBudgetForCat = (catId: string) =>
-    budgets.find(b => b.categoryId === catId && b.month === selectedMonth && b.year === selectedYear);
-
   const totalBudgeted = budgets
     .filter(b => b.month === selectedMonth && b.year === selectedYear)
     .reduce((s, b) => s + b.amount, 0);
@@ -49,6 +179,16 @@ export const Budgets = () => {
     if (cat.isDefault) { toast.error('Нельзя удалить стандартную категорию'); return; }
     deleteCategory(cat.id);
     toast.success('Категория удалена');
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = expenseCategories.findIndex(c => c.id === active.id);
+    const newIndex = expenseCategories.findIndex(c => c.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const newOrder = arrayMove(expenseCategories, oldIndex, newIndex).map(c => c.id);
+    reorderCategories(newOrder);
   };
 
   return (
@@ -110,10 +250,13 @@ export const Budgets = () => {
 
       {/* Budget categories */}
       <div>
-        <h3 className="text-text-primary font-semibold mb-4 flex items-center gap-2">
+        <h3 className="text-text-primary font-semibold mb-1 flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-expense" />
           Расходные категории и бюджеты
         </h3>
+        <p className="text-text-muted text-xs mb-4 flex items-center gap-1">
+          <GripVertical size={12} /> Перетащите карточку для изменения порядка
+        </p>
         {expenseCategories.length === 0 && (
           <div className="text-center py-12 bg-bg-card border border-dashed border-bg-border rounded-2xl">
             <PieChart size={40} className="mx-auto mb-3 text-text-muted opacity-30" />
@@ -125,96 +268,24 @@ export const Budgets = () => {
             </button>
           </div>
         )}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-          {expenseCategories.map(cat => {
-            const budget = getBudgetForCat(cat.id);
-            const spent = spending[cat.id] || 0;
-            const pct = budget ? Math.min(Math.round((spent / budget.amount) * 100), 100) : 0;
-            const isOver = budget && spent > budget.amount;
-            const isWarning = budget && pct >= (budget.alertThreshold || 80) && !isOver;
-            const prevSpending = (() => {
-              const pm = selectedMonth === 1 ? 12 : selectedMonth - 1;
-              const py = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
-              const { transactions: txs } = useFinanceStore.getState();
-              return txs.filter(t => {
-                const d = new Date(t.date);
-                return t.categoryId === cat.id && t.type === 'expense' && d.getMonth() + 1 === pm && d.getFullYear() === py;
-              }).reduce((s, t) => s + t.amount, 0);
-            })();
-
-            return (
-              <div key={cat.id} className={clsx('bg-bg-card border rounded-2xl p-4 transition-all',
-                isOver ? 'border-expense/40' : isWarning ? 'border-warning/40' : 'border-bg-border hover:border-brand/30')}>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                      style={{ background: cat.color + '20', color: cat.color }}>
-                      <span className="text-sm font-bold">{cat.name[0]}</span>
-                    </div>
-                    <div>
-                      <p className="text-text-primary text-sm font-medium flex items-center gap-1.5">
-                        {cat.name}
-                        {isOver && <AlertTriangle size={12} className="text-expense" />}
-                        {isWarning && <AlertTriangle size={12} className="text-warning" />}
-                      </p>
-                      {prevSpending > 0 && (
-                        <p className={clsx('text-xs', spent > prevSpending ? 'text-expense' : 'text-income')}>
-                          {spent > prevSpending ? '↑' : '↓'} {Math.abs(Math.round(((spent - prevSpending) / prevSpending) * 100))}% vs пред. мес.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => { setEditCategory(cat); setShowCatModal(true); }}
-                      title="Редактировать категорию"
-                      className="p-1.5 rounded-lg text-text-muted hover:text-brand hover:bg-brand/10 transition-colors">
-                      <Pencil size={13} />
-                    </button>
-                    <button onClick={() => { setEditBudgetCat(cat.id); setShowBudgetModal(true); }}
-                      title="Установить бюджет"
-                      className="p-1.5 rounded-lg text-text-muted hover:text-brand hover:bg-brand/10 transition-colors">
-                      <Edit2 size={13} />
-                    </button>
-                    {!cat.isDefault && (
-                      <button onClick={() => handleDeleteCategory(cat)}
-                        className="p-1.5 rounded-lg text-text-muted hover:text-expense hover:bg-expense/10 transition-colors">
-                        <Trash2 size={13} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-xs">
-                    <span className={clsx(isOver ? 'text-expense' : 'text-text-secondary')}>
-                      {formatMoney(spent)}
-                    </span>
-                    {budget ? (
-                      <span className="text-text-muted">из {formatMoney(budget.amount)}</span>
-                    ) : (
-                      <button onClick={() => { setEditBudgetCat(cat.id); setShowBudgetModal(true); }}
-                        className="text-brand hover:underline">
-                        + Установить бюджет
-                      </button>
-                    )}
-                  </div>
-                  {budget && (
-                    <div className="h-2 rounded-full bg-bg-border overflow-hidden">
-                      <div className={clsx('h-full rounded-full transition-all',
-                        isOver ? 'bg-expense' : isWarning ? 'bg-warning' : 'bg-brand')}
-                        style={{ width: `${pct}%` }} />
-                    </div>
-                  )}
-                  {budget && (
-                    <p className={clsx('text-xs', isOver ? 'text-expense' : 'text-text-muted')}>
-                      {isOver ? `Превышение на ${formatMoney(spent - budget.amount)}` : `Остаток: ${formatMoney(budget.amount - spent)}`}
-                    </p>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={expenseCategories.map(c => c.id)} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              {expenseCategories.map(cat => (
+                <SortableCategoryCard
+                  key={cat.id}
+                  cat={cat}
+                  spent={spending[cat.id] || 0}
+                  selectedMonth={selectedMonth}
+                  selectedYear={selectedYear}
+                  onEdit={() => { setEditCategory(cat); setShowCatModal(true); }}
+                  onSetBudget={() => { setEditBudgetCat(cat.id); setShowBudgetModal(true); }}
+                  onDelete={() => handleDeleteCategory(cat)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       </div>
 
       {/* Income categories */}
@@ -240,7 +311,7 @@ export const Budgets = () => {
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => { setEditCategory(cat); setShowCatModal(true); }}
-                    title="Редактировать категорию"
+                    title="Редактировать"
                     className="p-1.5 rounded-lg text-text-muted hover:text-brand hover:bg-brand/10 transition-colors">
                     <Pencil size={12} />
                   </button>

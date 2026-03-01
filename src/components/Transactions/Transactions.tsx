@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Plus, Search, Trash2, Edit2, ArrowUpDown, Repeat } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, ArrowUpDown, Repeat, CheckSquare, Square, X } from 'lucide-react';
 import { ConfirmDialog } from '../UI/ConfirmDialog';
-import { format, parseISO } from 'date-fns';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import { useFinanceStore } from '../../store/useFinanceStore';
@@ -12,12 +11,40 @@ import { TransactionType } from '../../types';
 
 type SortKey = 'date' | 'amount' | 'category';
 
+// Parse smart search query
+// Supports: >1000, <500, 500-1000, #tag, free text
+const parseSmartSearch = (q: string) => {
+  const tags: string[] = [];
+  const parts: string[] = [];
+  let minAmt: number | null = null;
+  let maxAmt: number | null = null;
+
+  q.split(/\s+/).forEach(token => {
+    if (token.startsWith('#') && token.length > 1) {
+      tags.push(token.slice(1).toLowerCase());
+    } else if (/^>(\d+(?:\.\d+)?)$/.test(token)) {
+      minAmt = parseFloat(token.slice(1));
+    } else if (/^<(\d+(?:\.\d+)?)$/.test(token)) {
+      maxAmt = parseFloat(token.slice(1));
+    } else if (/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/.test(token)) {
+      const [, a, b] = token.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/)!;
+      minAmt = parseFloat(a);
+      maxAmt = parseFloat(b);
+    } else if (token.length > 0) {
+      parts.push(token.toLowerCase());
+    }
+  });
+
+  return { textQuery: parts.join(' '), tags, minAmt, maxAmt };
+};
+
 export const Transactions = () => {
   const { transactions, categories, accounts, deleteTransaction } = useFinanceStore();
   const [showModal, setShowModal] = useState(false);
   const [showRecurring, setShowRecurring] = useState(false);
   const [editId, setEditId] = useState<string | undefined>();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'' | TransactionType>('');
   const [filterCat, setFilterCat] = useState('');
@@ -25,17 +52,25 @@ export const Transactions = () => {
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortAsc, setSortAsc] = useState(false);
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const PER_PAGE = 25;
 
   const catMap = Object.fromEntries(categories.map(c => [c.id, c]));
   const accMap = Object.fromEntries(accounts.map(a => [a.id, a]));
 
+  const parsed = useMemo(() => parseSmartSearch(search), [search]);
+
   const filtered = useMemo(() => {
     let list = [...transactions];
-    if (search) list = list.filter(t =>
-      t.comment?.toLowerCase().includes(search.toLowerCase()) ||
-      catMap[t.categoryId]?.name.toLowerCase().includes(search.toLowerCase())
+    const { textQuery, tags, minAmt, maxAmt } = parsed;
+
+    if (textQuery) list = list.filter(t =>
+      t.comment?.toLowerCase().includes(textQuery) ||
+      catMap[t.categoryId]?.name.toLowerCase().includes(textQuery)
     );
+    if (tags.length > 0) list = list.filter(t => tags.every(tag => t.tags?.includes(tag)));
+    if (minAmt !== null) list = list.filter(t => t.amount >= minAmt!);
+    if (maxAmt !== null) list = list.filter(t => t.amount <= maxAmt!);
     if (filterType) list = list.filter(t => t.type === filterType);
     if (filterCat) list = list.filter(t => t.categoryId === filterCat);
     if (filterAccount) list = list.filter(t => t.accountId === filterAccount);
@@ -48,7 +83,7 @@ export const Transactions = () => {
       return sortAsc ? cmp : -cmp;
     });
     return list;
-  }, [transactions, categories, search, filterType, filterCat, filterAccount, sortKey, sortAsc]);
+  }, [transactions, categories, parsed, filterType, filterCat, filterAccount, sortKey, sortAsc]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const safePage = Math.min(page, totalPages);
@@ -73,6 +108,42 @@ export const Transactions = () => {
     setConfirmDeleteId(null);
   };
 
+  const handleBulkDelete = () => {
+    selectedIds.forEach(id => deleteTransaction(id));
+    toast.success(`Удалено ${selectedIds.size} транзакций`);
+    setSelectedIds(new Set());
+    setConfirmBulkDelete(false);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const pagedIds = paged.map(t => t.id);
+  const allPageSelected = pagedIds.length > 0 && pagedIds.every(id => selectedIds.has(id));
+  const somePageSelected = pagedIds.some(id => selectedIds.has(id));
+
+  const toggleSelectAll = () => {
+    if (allPageSelected) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        pagedIds.forEach(id => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        pagedIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  };
+
   // Group by date
   const grouped = useMemo(() => {
     const groups: Record<string, typeof paged> = {};
@@ -87,6 +158,8 @@ export const Transactions = () => {
   const totalIncome = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
   const totalExpense = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
 
+  const hasSmartTokens = parsed.tags.length > 0 || parsed.minAmt !== null || parsed.maxAmt !== null;
+
   return (
     <div className="p-6 space-y-4 animate-fade-in">
       {/* Toolbar */}
@@ -94,7 +167,7 @@ export const Transactions = () => {
         <div className="relative flex-1 min-w-48">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Поиск по транзакциям..."
+            placeholder='Поиск... >1000, <500, #тег'
             className="w-full bg-bg-card border border-bg-border rounded-xl pl-9 pr-4 py-2.5 text-text-primary text-sm
               focus:outline-none focus:border-brand placeholder-text-muted" />
         </div>
@@ -132,6 +205,53 @@ export const Transactions = () => {
         </button>
       </div>
 
+      {/* Smart search hints */}
+      {hasSmartTokens && (
+        <div className="flex flex-wrap gap-2">
+          {parsed.minAmt !== null && parsed.maxAmt !== null && (
+            <span className="px-2 py-1 bg-brand/10 text-brand text-xs rounded-full">
+              Сумма: {parsed.minAmt}–{parsed.maxAmt} ₽
+            </span>
+          )}
+          {parsed.minAmt !== null && parsed.maxAmt === null && (
+            <span className="px-2 py-1 bg-brand/10 text-brand text-xs rounded-full">
+              Сумма: от {parsed.minAmt} ₽
+            </span>
+          )}
+          {parsed.maxAmt !== null && parsed.minAmt === null && (
+            <span className="px-2 py-1 bg-brand/10 text-brand text-xs rounded-full">
+              Сумма: до {parsed.maxAmt} ₽
+            </span>
+          )}
+          {parsed.tags.map(tag => (
+            <span key={tag} className="px-2 py-1 bg-brand/10 text-brand text-xs rounded-full">#{tag}</span>
+          ))}
+        </div>
+      )}
+
+      {/* Bulk action toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-expense/10 border border-expense/20 rounded-xl">
+          <CheckSquare size={16} className="text-expense" />
+          <span className="text-text-primary text-sm font-medium flex-1">
+            Выбрано: {selectedIds.size}
+          </span>
+          <button
+            onClick={() => setConfirmBulkDelete(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-expense text-white text-xs font-medium hover:bg-expense/90 transition-colors"
+          >
+            <Trash2 size={13} />
+            Удалить ({selectedIds.size})
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="p-1.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
       {/* Summary bar */}
       <div className="flex gap-4 text-sm">
         <span className="text-text-secondary">
@@ -143,6 +263,21 @@ export const Transactions = () => {
           = {totalIncome - totalExpense >= 0 ? '+' : ''}{formatMoney(totalIncome - totalExpense)}
         </span>
       </div>
+
+      {/* Select all row */}
+      {paged.length > 0 && (
+        <div className="flex items-center gap-2 px-1">
+          <button onClick={toggleSelectAll} className="flex items-center gap-2 text-text-muted hover:text-text-secondary text-xs transition-colors">
+            {allPageSelected
+              ? <CheckSquare size={15} className="text-brand" />
+              : somePageSelected
+                ? <CheckSquare size={15} className="text-brand/50" />
+                : <Square size={15} />
+            }
+            {allPageSelected ? 'Снять выбор' : 'Выбрать все на странице'}
+          </button>
+        </div>
+      )}
 
       {/* Transactions list grouped by date */}
       <div className="space-y-4">
@@ -161,9 +296,24 @@ export const Transactions = () => {
               {txs.map((tx, i) => {
                 const cat = catMap[tx.categoryId];
                 const acc = accMap[tx.accountId];
+                const isSelected = selectedIds.has(tx.id);
                 return (
-                  <div key={tx.id} className={clsx('flex items-center gap-4 p-4 hover:bg-bg-hover transition-colors group',
-                    i < txs.length - 1 && 'border-b border-bg-border')}>
+                  <div key={tx.id} className={clsx(
+                    'flex items-center gap-3 p-4 hover:bg-bg-hover transition-colors group',
+                    i < txs.length - 1 && 'border-b border-bg-border',
+                    isSelected && 'bg-brand/5'
+                  )}>
+                    {/* Checkbox */}
+                    <button
+                      onClick={() => toggleSelect(tx.id)}
+                      className="flex-shrink-0 text-text-muted hover:text-brand transition-colors"
+                    >
+                      {isSelected
+                        ? <CheckSquare size={16} className="text-brand" />
+                        : <Square size={16} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                      }
+                    </button>
+
                     {/* Icon */}
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                       style={{ background: (cat?.color || '#6b7280') + '20', color: cat?.color || '#6b7280' }}>
@@ -286,6 +436,15 @@ export const Transactions = () => {
           message="Это действие нельзя отменить."
           onConfirm={() => handleDelete(confirmDeleteId)}
           onCancel={() => setConfirmDeleteId(null)}
+        />
+      )}
+      {confirmBulkDelete && (
+        <ConfirmDialog
+          title={`Удалить ${selectedIds.size} транзакций?`}
+          message="Это действие нельзя отменить. Все выбранные транзакции будут удалены."
+          onConfirm={handleBulkDelete}
+          onCancel={() => setConfirmBulkDelete(false)}
+          danger
         />
       )}
     </div>

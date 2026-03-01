@@ -266,7 +266,12 @@ export const Calendar = () => {
         </div>
       </div>
 
-      {showAddModal && <TransactionModal onClose={() => setShowAddModal(false)} />}
+      {showAddModal && (
+        <TransactionModal
+          onClose={() => setShowAddModal(false)}
+          initialDate={selectedDay || undefined}
+        />
+      )}
     </div>
   );
 };

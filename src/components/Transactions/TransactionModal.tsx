@@ -9,9 +9,10 @@ import { TransactionType } from '../../types';
 interface TransactionModalProps {
   onClose: () => void;
   editId?: string;
+  initialDate?: string;
 }
 
-export const TransactionModal = ({ onClose, editId }: TransactionModalProps) => {
+export const TransactionModal = ({ onClose, editId, initialDate }: TransactionModalProps) => {
   const { transactions, accounts, categories, subcategories, addTransaction, updateTransaction } = useFinanceStore();
 
   const editing = editId ? transactions.find(t => t.id === editId) : undefined;
@@ -22,7 +23,7 @@ export const TransactionModal = ({ onClose, editId }: TransactionModalProps) => 
   const [subcategoryId, setSubcategoryId] = useState(editing?.subcategoryId || '');
   const [accountId, setAccountId] = useState(editing?.accountId || (accounts[0]?.id || ''));
   const [toAccountId, setToAccountId] = useState(editing?.toAccountId || '');
-  const [date, setDate] = useState(editing?.date || format(new Date(), 'yyyy-MM-dd'));
+  const [date, setDate] = useState(editing?.date || initialDate || format(new Date(), 'yyyy-MM-dd'));
   const [comment, setComment] = useState(editing?.comment || '');
   const [tags, setTags] = useState<string[]>(editing?.tags || []);
   const [tagInput, setTagInput] = useState('');

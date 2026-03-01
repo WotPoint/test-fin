@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, BarChart2, DollarSign } from 'lucide-react';
+import { Tag, SlidersHorizontal, X } from 'lucide-react';
 import { format, subMonths, parseISO, eachDayOfInterval, startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
@@ -9,17 +9,67 @@ import { clsx } from 'clsx';
 import { useFinanceStore } from '../../store/useFinanceStore';
 import { formatMoney, getMonthName } from '../../utils/formatters';
 
-type Period = '1m' | '3m' | '6m' | '1y';
+type Period = '1m' | '3m' | '6m' | '1y' | 'custom';
 
 export const Analytics = () => {
-  const { transactions, categories, getMonthlyStats, getCategorySpending, getTotalBalance } = useFinanceStore();
+  const { transactions, categories, accounts, getMonthlyStats, getCategorySpending, getTotalBalance } = useFinanceStore();
   const [period, setPeriod] = useState<Period>('3m');
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
+  const [filterAccount, setFilterAccount] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
   const now = new Date();
 
-  const periodMonths = { '1m': 1, '3m': 3, '6m': 6, '1y': 12 }[period];
+  const periodMonths = { '1m': 1, '3m': 3, '6m': 6, '1y': 12 }[period as Exclude<Period, 'custom'>] ?? 3;
 
-  // Monthly data for bar/line charts
+  // Derive date range for filtering
+  const { rangeStart, rangeEnd } = useMemo(() => {
+    if (period === 'custom' && customDateFrom && customDateTo) {
+      return { rangeStart: customDateFrom, rangeEnd: customDateTo };
+    }
+    const end = format(now, 'yyyy-MM-dd');
+    const start = format(subMonths(now, periodMonths - 1), 'yyyy-MM-01');
+    return { rangeStart: start, rangeEnd: end };
+  }, [period, periodMonths, customDateFrom, customDateTo]);
+
+  // Filtered transactions
+  const filteredTx = useMemo(() => {
+    return transactions.filter(tx => {
+      if (tx.date < rangeStart || tx.date > rangeEnd) return false;
+      if (filterAccount && tx.accountId !== filterAccount) return false;
+      if (filterCategory && tx.categoryId !== filterCategory) return false;
+      return true;
+    });
+  }, [transactions, rangeStart, rangeEnd, filterAccount, filterCategory]);
+
+  const hasFilters = !!(filterAccount || filterCategory);
+
+  // Monthly data for bar/line charts (using filteredTx if filters active, else store selectors)
   const monthlyData = useMemo(() => {
+    if (period === 'custom' || hasFilters) {
+      // Group filtered transactions by month
+      const map: Record<string, { income: number; expense: number }> = {};
+      filteredTx.forEach(tx => {
+        const key = tx.date.slice(0, 7); // yyyy-MM
+        if (!map[key]) map[key] = { income: 0, expense: 0 };
+        if (tx.type === 'income') map[key].income += tx.amount;
+        if (tx.type === 'expense') map[key].expense += tx.amount;
+      });
+      return Object.entries(map)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, s]) => {
+          const [y, m] = key.split('-').map(Number);
+          return {
+            month: format(new Date(y, m - 1), 'MMM'),
+            fullMonth: `${getMonthName(m)} ${y}`,
+            income: s.income,
+            expense: s.expense,
+            net: s.income - s.expense,
+            savings: Math.max(s.income - s.expense, 0),
+          };
+        });
+    }
     return Array.from({ length: periodMonths }, (_, i) => {
       const d = subMonths(now, periodMonths - 1 - i);
       const m = d.getMonth() + 1;
@@ -34,12 +84,17 @@ export const Analytics = () => {
         savings: Math.max(s.net, 0),
       };
     });
-  }, [transactions, period]);
+  }, [filteredTx, transactions, period, periodMonths, hasFilters]);
 
-  // Current month category spending
-  const currentMonth = now.getMonth() + 1;
-  const currentYear = now.getFullYear();
-  const spending = useMemo(() => getCategorySpending(currentMonth, currentYear), [transactions]);
+  // Category spending for pie
+  const spending = useMemo(() => {
+    const result: Record<string, number> = {};
+    filteredTx.forEach(tx => {
+      if (tx.type !== 'expense') return;
+      result[tx.categoryId] = (result[tx.categoryId] || 0) + tx.amount;
+    });
+    return result;
+  }, [filteredTx]);
 
   const pieData = useMemo(() => {
     const cats = categories.filter(c => c.type === 'expense' && !c.isArchived);
@@ -51,7 +106,7 @@ export const Analytics = () => {
 
   const totalExpenseMonth = pieData.reduce((s, d) => s + d.value, 0);
 
-  // Daily spending for current month
+  // Daily spending for current month (always current month)
   const dailyData = useMemo(() => {
     const start = startOfMonth(now);
     const end = endOfMonth(now);
@@ -75,7 +130,6 @@ export const Analytics = () => {
       return getMonthlyStats(d.getMonth() + 1, d.getFullYear()).net;
     });
     const avgMonthly = last3.reduce((s, v) => s + v, 0) / last3.length;
-
     return Array.from({ length: 4 }, (_, i) => {
       const d = addMonths(now, i);
       return {
@@ -89,17 +143,15 @@ export const Analytics = () => {
   // Stats summary
   const totalIncome = monthlyData.reduce((s, d) => s + d.income, 0);
   const totalExpense = monthlyData.reduce((s, d) => s + d.expense, 0);
-  const avgMonthlyExpense = totalExpense / periodMonths;
+  const months = period === 'custom' ? Math.max(monthlyData.length, 1) : periodMonths;
+  const avgMonthlyExpense = totalExpense / months;
   const avgDailyExpense = avgMonthlyExpense / 30;
 
-  // Top spending categories across period
+  // Top spending categories
   const topCategories = useMemo(() => {
     const catTotals: Record<string, number> = {};
-    transactions.forEach(tx => {
+    filteredTx.forEach(tx => {
       if (tx.type !== 'expense') return;
-      const d = parseISO(tx.date);
-      const monthsAgo = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
-      if (monthsAgo < 0 || monthsAgo >= periodMonths) return;
       catTotals[tx.categoryId] = (catTotals[tx.categoryId] || 0) + tx.amount;
     });
     return Object.entries(catTotals)
@@ -107,7 +159,24 @@ export const Analytics = () => {
       .filter(x => x.cat)
       .sort((a, b) => b.total - a.total)
       .slice(0, 5);
-  }, [transactions, categories, period]);
+  }, [filteredTx, categories]);
+
+  // Tag stats
+  const tagStats = useMemo(() => {
+    const tagMap: Record<string, { amount: number; count: number }> = {};
+    filteredTx.forEach(tx => {
+      if (tx.type !== 'expense') return;
+      (tx.tags || []).forEach(tag => {
+        if (!tagMap[tag]) tagMap[tag] = { amount: 0, count: 0 };
+        tagMap[tag].amount += tx.amount;
+        tagMap[tag].count += 1;
+      });
+    });
+    return Object.entries(tagMap)
+      .map(([tag, s]) => ({ tag, ...s }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 10);
+  }, [filteredTx]);
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
@@ -123,10 +192,12 @@ export const Analytics = () => {
     );
   };
 
+  const activeFiltersCount = [filterAccount, filterCategory].filter(Boolean).length;
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
-      {/* Period selector */}
-      <div className="flex items-center gap-2">
+      {/* Period selector + Filters */}
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-text-secondary text-sm">Период:</span>
         {(['1m', '3m', '6m', '1y'] as Period[]).map(p => (
           <button key={p} onClick={() => setPeriod(p)}
@@ -135,7 +206,80 @@ export const Analytics = () => {
             {p === '1m' ? '1 мес.' : p === '3m' ? '3 мес.' : p === '6m' ? '6 мес.' : '1 год'}
           </button>
         ))}
+        <button onClick={() => setPeriod('custom')}
+          className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium transition-all',
+            period === 'custom' ? 'bg-brand text-bg-primary' : 'bg-bg-card border border-bg-border text-text-secondary hover:text-text-primary')}>
+          Диапазон
+        </button>
+
+        <div className="flex-1" />
+
+        <button
+          onClick={() => setShowFilters(p => !p)}
+          className={clsx(
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all',
+            showFilters || activeFiltersCount > 0
+              ? 'bg-brand/10 border-brand/30 text-brand'
+              : 'bg-bg-card border-bg-border text-text-secondary hover:text-text-primary'
+          )}
+        >
+          <SlidersHorizontal size={14} />
+          Фильтры
+          {activeFiltersCount > 0 && (
+            <span className="bg-brand text-bg-primary text-xs rounded-full px-1.5 py-0.5 font-bold leading-none">
+              {activeFiltersCount}
+            </span>
+          )}
+        </button>
       </div>
+
+      {/* Custom date range */}
+      {period === 'custom' && (
+        <div className="flex flex-wrap items-center gap-3 p-3 bg-bg-card border border-bg-border rounded-xl">
+          <span className="text-text-secondary text-sm">С:</span>
+          <input type="date" value={customDateFrom} onChange={e => setCustomDateFrom(e.target.value)}
+            className="bg-bg-secondary border border-bg-border rounded-lg px-3 py-1.5 text-text-primary text-sm focus:outline-none focus:border-brand" />
+          <span className="text-text-secondary text-sm">По:</span>
+          <input type="date" value={customDateTo} onChange={e => setCustomDateTo(e.target.value)}
+            className="bg-bg-secondary border border-bg-border rounded-lg px-3 py-1.5 text-text-primary text-sm focus:outline-none focus:border-brand" />
+          {(customDateFrom || customDateTo) && (
+            <button onClick={() => { setCustomDateFrom(''); setCustomDateTo(''); }}
+              className="text-text-muted hover:text-expense transition-colors">
+              <X size={15} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Filters panel */}
+      {showFilters && (
+        <div className="flex flex-wrap gap-3 p-4 bg-bg-card border border-bg-border rounded-xl">
+          <div>
+            <label className="block text-text-muted text-xs mb-1">Счёт</label>
+            <select value={filterAccount} onChange={e => setFilterAccount(e.target.value)}
+              className="bg-bg-secondary border border-bg-border rounded-xl px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-brand min-w-36">
+              <option value="">Все счета</option>
+              {accounts.filter(a => !a.isArchived).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-text-muted text-xs mb-1">Категория</label>
+            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+              className="bg-bg-secondary border border-bg-border rounded-xl px-3 py-2 text-text-primary text-sm focus:outline-none focus:border-brand min-w-36">
+              <option value="">Все категории</option>
+              {categories.filter(c => !c.isArchived && c.type === 'expense').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          {hasFilters && (
+            <div className="flex items-end">
+              <button onClick={() => { setFilterAccount(''); setFilterCategory(''); }}
+                className="px-3 py-2 text-xs text-text-muted hover:text-expense transition-colors">
+                Сбросить
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
@@ -195,7 +339,7 @@ export const Analytics = () => {
 
         {/* Category pie */}
         <div className="bg-bg-card border border-bg-border rounded-2xl p-5">
-          <h3 className="text-text-primary font-semibold mb-4">Расходы по категориям (текущий мес.)</h3>
+          <h3 className="text-text-primary font-semibold mb-4">Расходы по категориям</h3>
           {pieData.length > 0 ? (
             <div className="flex gap-4 items-center">
               <ResponsiveContainer width={160} height={160}>
@@ -208,7 +352,7 @@ export const Analytics = () => {
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex-1 space-y-2">
-                {pieData.map((d, i) => (
+                {pieData.slice(0, 6).map((d, i) => (
                   <div key={i} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: d.color }} />
@@ -255,32 +399,36 @@ export const Analytics = () => {
         {/* Top categories */}
         <div className="bg-bg-card border border-bg-border rounded-2xl p-5">
           <h3 className="text-text-primary font-semibold mb-4">Топ-5 расходных категорий</h3>
-          <div className="space-y-3">
-            {topCategories.map(({ cat, total }, i) => {
-              const pct = totalExpense > 0 ? Math.round((total / totalExpense) * 100) : 0;
-              return (
-                <div key={cat!.id}>
-                  <div className="flex justify-between items-center mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-text-muted text-xs w-4">{i + 1}</span>
-                      <div className="w-6 h-6 rounded-lg flex items-center justify-center text-xs"
-                        style={{ background: cat!.color + '20', color: cat!.color }}>
-                        {cat!.name[0]}
+          {topCategories.length > 0 ? (
+            <div className="space-y-3">
+              {topCategories.map(({ cat, total }, i) => {
+                const pct = totalExpense > 0 ? Math.round((total / totalExpense) * 100) : 0;
+                return (
+                  <div key={cat!.id}>
+                    <div className="flex justify-between items-center mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-text-muted text-xs w-4">{i + 1}</span>
+                        <div className="w-6 h-6 rounded-lg flex items-center justify-center text-xs"
+                          style={{ background: cat!.color + '20', color: cat!.color }}>
+                          {cat!.name[0]}
+                        </div>
+                        <span className="text-text-primary text-sm">{cat!.name}</span>
                       </div>
-                      <span className="text-text-primary text-sm">{cat!.name}</span>
+                      <div className="text-right">
+                        <span className="text-text-primary text-sm font-mono">{formatMoney(total, 'RUB', true)}</span>
+                        <span className="text-text-muted text-xs ml-2">{pct}%</span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-text-primary text-sm font-mono">{formatMoney(total, 'RUB', true)}</span>
-                      <span className="text-text-muted text-xs ml-2">{pct}%</span>
+                    <div className="h-1.5 rounded-full bg-bg-border overflow-hidden ml-10">
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: cat!.color }} />
                     </div>
                   </div>
-                  <div className="h-1.5 rounded-full bg-bg-border overflow-hidden ml-10">
-                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: cat!.color }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-32 text-text-muted text-sm">Нет данных за период</div>
+          )}
         </div>
 
         {/* Balance forecast */}
@@ -302,12 +450,43 @@ export const Analytics = () => {
               <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }}
                 formatter={(v: number) => [formatMoney(v), 'Баланс']} />
               <Area type="monotone" dataKey="balance" stroke="#00d4aa" strokeWidth={2.5}
-                strokeDasharray="0"
                 fill="url(#balGrad)" dot={{ fill: '#00d4aa', r: 4 }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Tag statistics */}
+      {tagStats.length > 0 && (
+        <div className="bg-bg-card border border-bg-border rounded-2xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Tag size={16} className="text-brand" />
+            <h3 className="text-text-primary font-semibold">Статистика по тегам</h3>
+            <span className="text-text-muted text-xs">(расходы за период)</span>
+          </div>
+          <div className="space-y-3">
+            {tagStats.map(({ tag, amount, count }, i) => {
+              const maxAmt = tagStats[0].amount;
+              const pct = maxAmt > 0 ? Math.round((amount / maxAmt) * 100) : 0;
+              return (
+                <div key={tag}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-text-muted text-xs w-4">{i + 1}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-brand/10 text-brand text-xs font-medium">#{tag}</span>
+                      <span className="text-text-muted text-xs">{count} операц.</span>
+                    </div>
+                    <span className="text-text-primary text-sm font-mono font-medium">{formatMoney(amount, 'RUB', true)}</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-bg-border overflow-hidden ml-6">
+                    <div className="h-full rounded-full bg-brand/60" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

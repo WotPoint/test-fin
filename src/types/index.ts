@@ -45,7 +45,6 @@ export interface Transaction {
   toAccountId?: string; // for transfers
   date: string;
   comment?: string;
-  receiptPhoto?: string; // base64
   tags?: string[];
   recurringId?: string;
   createdAt: string;
@@ -78,6 +77,13 @@ export interface Budget {
   alertThreshold: number; // percentage 0-100
 }
 
+export interface GoalContribution {
+  id: string;
+  amount: number;
+  date: string;
+  comment?: string;
+}
+
 export interface Goal {
   id: string;
   name: string;
@@ -89,6 +95,7 @@ export interface Goal {
   color: string;
   isCompleted: boolean;
   createdAt: string;
+  contributions?: GoalContribution[];
 }
 
 export interface FinanceState {

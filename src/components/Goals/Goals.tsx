@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Target, Trash2, Edit2, CheckCircle2, PlusCircle, Plane, Shield, Laptop, Home, Car, Star, Gift, Smartphone } from 'lucide-react';
+import { Plus, Target, Trash2, Edit2, CheckCircle2, PlusCircle, ChevronDown, ChevronUp, Plane, Shield, Laptop, Home, Car, Star, Gift, Smartphone } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ConfirmDialog } from '../UI/ConfirmDialog';
 import { format, differenceInDays, parseISO } from 'date-fns';
@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import { useFinanceStore } from '../../store/useFinanceStore';
 import { GoalModal } from './GoalModal';
 import { Goal } from '../../types';
-import { formatMoney } from '../../utils/formatters';
+import { formatMoney, formatDateShort } from '../../utils/formatters';
 
 const iconMap: Record<string, React.ElementType> = {
   Plane, Shield, Laptop, Home, Car, Star, Gift, Smartphone, Target,
@@ -44,6 +44,8 @@ export const Goals = () => {
     const Icon = iconMap[goal.icon] || Target;
     const daysLeft = goal.deadline ? differenceInDays(parseISO(goal.deadline), new Date()) : null;
     const monthlyNeeded = daysLeft && daysLeft > 0 ? Math.ceil(remaining / (daysLeft / 30)) : null;
+    const [showHistory, setShowHistory] = useState(false);
+    const contributions = goal.contributions || [];
 
     return (
       <div className={clsx('bg-bg-card border rounded-2xl p-5 transition-all group shadow-card',
@@ -130,6 +132,30 @@ export const Goals = () => {
               <PlusCircle size={14} /> Пополнить цель
             </button>
           )
+        )}
+
+        {/* Contribution history */}
+        {contributions.length > 0 && (
+          <div className="mt-3">
+            <button
+              onClick={() => setShowHistory(p => !p)}
+              className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors w-full"
+            >
+              {showHistory ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              История пополнений ({contributions.length})
+            </button>
+            {showHistory && (
+              <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+                {[...contributions].reverse().map(c => (
+                  <div key={c.id} className="flex items-center justify-between text-xs py-1 border-b border-bg-border last:border-0">
+                    <span className="text-text-muted">{formatDateShort(c.date)}</span>
+                    {c.comment && <span className="text-text-muted truncate mx-2 flex-1">{c.comment}</span>}
+                    <span className="text-income font-mono font-medium">+{formatMoney(c.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
     );
