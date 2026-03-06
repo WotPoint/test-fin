@@ -28,17 +28,28 @@ const PAGE_META: Record<string, { title: string; subtitle?: string }> = {
 const AppContent = () => {
   const location = useLocation();
   const meta = PAGE_META[location.pathname] || { title: 'FinTrack' };
-  const { processRecurring } = useFinanceStore();
+  const { loadData, processRecurring, isLoading } = useFinanceStore();
   const { mode, setMode } = useThemeStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    processRecurring();
     setMode(mode);
+    loadData().then(() => processRecurring());
   }, []);
 
   // Close sidebar on route change (mobile)
   useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-bg-primary">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-brand border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-text-secondary text-sm">Загрузка данных...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-bg-primary overflow-hidden">

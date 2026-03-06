@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./fintrack.db"
+}
+
+model Account {
+  id             String        @id @default(uuid())
+  name           String
+  type           String
+  currency       String        @default("RUB")
+  initialBalance Float         @default(0)
+  color          String
+  icon           String
+  isArchived     Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  transactions   Transaction[] @relation("FromAccount")
+  transfersTo    Transaction[] @relation("ToAccount")
+}
+
+model Category {
+  id         String                 @id @default(uuid())
+  name       String
+  type       String
+  color      String
+  icon       String
+  parentId   String?
+  isDefault  Boolean                @default(false)
+  isArchived Boolean                @default(false)
+  order      Int                    @default(0)
+  transactions Transaction[]
+  budgets    Budget[]
+  recurring  RecurringTransaction[]
+}
+
+model Transaction {
+  id            String    @id @default(uuid())
+  type          String
+  amount        Float
+  categoryId    String?
+  subcategoryId String?
+  accountId     String
+  toAccountId   String?
+  date          DateTime
+  comment       String?
+  tags          String    @default("[]")
+  recurringId   String?
+  account       Account   @relation("FromAccount", fields: [accountId], references: [id])
+  toAccount     Account?  @relation("ToAccount", fields: [toAccountId], references: [id])
+  category      Category? @relation(fields: [categoryId], references: [id])
+}
+
+model Budget {
+  id             String   @id @default(uuid())
+  categoryId     String
+  amount         Float
+  month          Int
+  year           Int
+  alertThreshold Int      @default(80)
+  category       Category @relation(fields: [categoryId], references: [id])
+}
+
+model Goal {
+  id            String             @id @default(uuid())
+  name          String
+  description   String?
+  targetAmount  Float
+  currentAmount Float              @default(0)
+  deadline      DateTime?
+  icon          String
+  color         String
+  isCompleted   Boolean            @default(false)
+  createdAt     DateTime           @default(now())
+  contributions GoalContribution[]
+}
+
+model GoalContribution {
+  id     String   @id @default(uuid())
+  goalId String
+  amount Float
+  date   DateTime
+  goal   Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+}
+
+model RecurringTransaction {
+  id                String    @id @default(uuid())
+  name              String
+  type              String
+  amount            Float
+  categoryId        String?
+  accountId         String
+  frequency         String
+  startDate         DateTime
+  endDate           DateTime?
+  nextDate          DateTime
+  lastProcessedDate DateTime?
+  isActive          Boolean   @default(true)
+  category          Category? @relation(fields: [categoryId], references: [id])
+}
