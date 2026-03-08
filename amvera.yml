@@ -5,13 +5,7 @@ meta:
     version: 20
 
 build:
-  command: >-
-    npm install --include=dev &&
-    npm run build &&
-    cd backend &&
-    npm install --include=dev &&
-    npx prisma generate &&
-    npm run build
+  additionalCommands: npm install --include=dev && npm run build && cd backend && npm install --include=dev && npx prisma generate && npm run build
 
 run:
   command: cd /app/backend && npx prisma migrate deploy && node dist/server.js
