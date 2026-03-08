@@ -13,6 +13,8 @@ import { Calendar } from './components/Calendar/Calendar';
 import { Reports } from './components/Reports/Reports';
 import { useFinanceStore } from './store/useFinanceStore';
 import { useThemeStore } from './store/useThemeStore';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { LoginPage } from './components/Auth/LoginPage';
 
 const PAGE_META: Record<string, { title: string; subtitle?: string }> = {
   '/':             { title: 'Дашборд',              subtitle: 'Обзор финансов' },
@@ -88,10 +90,23 @@ const AppContent = () => {
 };
 
 function App() {
+  const [isAuthed, setIsAuthed] = useState(() => !!localStorage.getItem('fintrack_token'));
+
+  if (!isAuthed) {
+    return (
+      <ErrorBoundary>
+        <Toaster position="bottom-right" />
+        <LoginPage onLogin={() => setIsAuthed(true)} />
+      </ErrorBoundary>
+    );
+  }
+
   return (
-    <BrowserRouter>
-      <AppContent />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

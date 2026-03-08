@@ -4,59 +4,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { format, parseISO, isBefore, addDays } from 'date-fns';
 import type {
   Account, Category, Subcategory, Transaction, RecurringTransaction,
-  Budget, Goal, GoalContribution
+  Budget, Goal
 } from '../types';
-import { defaultSubcategories } from './initialData';
 import {
-  accountsApi, transactionsApi, categoriesApi, budgetsApi, goalsApi, recurringApi
+  accountsApi, transactionsApi, categoriesApi, subcategoriesApi, budgetsApi, goalsApi, recurringApi
 } from '../api/client';
-
-// ─── Date normalization helpers ───────────────────────────────────────────────
-
-function fmtDate(val: string | Date | null | undefined): string {
-  if (!val) return '';
-  return format(new Date(val as string), 'yyyy-MM-dd');
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizeTransaction(tx: any): Transaction {
-  return {
-    ...tx,
-    date: fmtDate(tx.date),
-    tags: typeof tx.tags === 'string' ? JSON.parse(tx.tags) : (tx.tags ?? []),
-    categoryId: tx.categoryId ?? '',
-    createdAt: tx.createdAt ? new Date(tx.createdAt).toISOString() : new Date().toISOString(),
-  };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizeAccount(a: any): Account {
-  return { ...a, createdAt: a.createdAt ? new Date(a.createdAt).toISOString() : new Date().toISOString() };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizeGoal(g: any): Goal {
-  return {
-    ...g,
-    deadline: g.deadline ? fmtDate(g.deadline) : undefined,
-    createdAt: g.createdAt ? new Date(g.createdAt).toISOString() : new Date().toISOString(),
-    contributions: (g.contributions ?? []).map((c: GoalContribution & { date: string }) => ({
-      ...c,
-      date: fmtDate(c.date),
-    })),
-  };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizeRecurring(r: any): RecurringTransaction {
-  return {
-    ...r,
-    startDate: fmtDate(r.startDate),
-    nextDate: fmtDate(r.nextDate),
-    endDate: r.endDate ? fmtDate(r.endDate) : undefined,
-    lastProcessedDate: r.lastProcessedDate ? fmtDate(r.lastProcessedDate) : undefined,
-  };
-}
+import { normalizeTransaction, normalizeAccount, normalizeGoal, normalizeRecurring } from '../utils/normalize';
+import toast from 'react-hot-toast';
 
 // ─── Store interface ──────────────────────────────────────────────────────────
 
@@ -65,12 +19,14 @@ interface FinanceStore {
   categories: Category[];
   subcategories: Subcategory[];
   transactions: Transaction[];
+  transactionsTotal: number;
   recurringTransactions: RecurringTransaction[];
   budgets: Budget[];
   goals: Goal[];
   isLoading: boolean;
 
   loadData: () => Promise<void>;
+  loadMoreTransactions: () => Promise<void>;
 
   // Account actions
   addAccount: (acc: Omit<Account, 'id' | 'createdAt'>) => Promise<void>;
@@ -82,9 +38,9 @@ interface FinanceStore {
   updateCategory: (id: string, updates: Partial<Category>) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
 
-  // Subcategory actions (in-memory only)
-  addSubcategory: (sub: Omit<Subcategory, 'id'>) => void;
-  deleteSubcategory: (id: string) => void;
+  // Subcategory actions
+  addSubcategory: (sub: Omit<Subcategory, 'id'>) => Promise<void>;
+  deleteSubcategory: (id: string) => Promise<void>;
 
   // Transaction actions
   addTransaction: (tx: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>;
@@ -135,8 +91,9 @@ export const useFinanceStore = create<FinanceStore>()(
   immer((set, get) => ({
     accounts: [],
     categories: [],
-    subcategories: defaultSubcategories,
+    subcategories: [],
     transactions: [],
+    transactionsTotal: 0,
     recurringTransactions: [],
     budgets: [],
     goals: [],
@@ -145,10 +102,11 @@ export const useFinanceStore = create<FinanceStore>()(
     loadData: async () => {
       set(s => { s.isLoading = true; });
       try {
-        const [accounts, categories, transactions, budgets, goals, recurring] = await Promise.all([
+        const [accounts, categories, subcategories, txResult, budgets, goals, recurring] = await Promise.all([
           accountsApi.getAll(),
           categoriesApi.getAll(),
-          transactionsApi.getAll(),
+          subcategoriesApi.getAll(),
+          transactionsApi.getAll({ limit: '100' }),
           budgetsApi.getAll(),
           goalsApi.getAll(),
           recurringApi.getAll(),
@@ -156,7 +114,9 @@ export const useFinanceStore = create<FinanceStore>()(
         set(s => {
           s.accounts = accounts.map(normalizeAccount);
           s.categories = categories;
-          s.transactions = transactions.map(normalizeTransaction);
+          s.subcategories = subcategories;
+          s.transactions = txResult.data.map(normalizeTransaction);
+          s.transactionsTotal = txResult.total;
           s.budgets = budgets;
           s.goals = goals.map(normalizeGoal);
           s.recurringTransactions = recurring.map(normalizeRecurring);
@@ -166,6 +126,18 @@ export const useFinanceStore = create<FinanceStore>()(
         console.error('Failed to load data from API:', e);
         set(s => { s.isLoading = false; });
       }
+    },
+
+    loadMoreTransactions: async () => {
+      const { transactions } = get();
+      const txResult = await transactionsApi.getAll({
+        limit: '100',
+        offset: String(transactions.length),
+      });
+      set(s => {
+        txResult.data.map(normalizeTransaction).forEach(tx => s.transactions.push(tx));
+        s.transactionsTotal = txResult.total;
+      });
     },
 
     // ── Accounts ────────────────────────────────────────────────────────────
@@ -204,19 +176,25 @@ export const useFinanceStore = create<FinanceStore>()(
     },
 
     deleteCategory: async (id) => {
-      await categoriesApi.remove(id);
-      set(s => { s.categories = s.categories.filter(c => c.id !== id); });
+      try {
+        await categoriesApi.remove(id);
+        set(s => { s.categories = s.categories.filter(c => c.id !== id); });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Ошибка удаления категории');
+      }
     },
 
-    // ── Subcategories (in-memory only) ──────────────────────────────────────
+    // ── Subcategories ────────────────────────────────────────────────────────
 
-    addSubcategory: (sub) => set(s => {
-      s.subcategories.push({ ...sub, id: uuidv4() });
-    }),
+    addSubcategory: async (sub) => {
+      const created = await subcategoriesApi.create(sub);
+      set(s => { s.subcategories.push(created); });
+    },
 
-    deleteSubcategory: (id) => set(s => {
-      s.subcategories = s.subcategories.filter(s => s.id !== id);
-    }),
+    deleteSubcategory: async (id) => {
+      await subcategoriesApi.remove(id);
+      set(s => { s.subcategories = s.subcategories.filter(sc => sc.id !== id); });
+    },
 
     // ── Transactions ────────────────────────────────────────────────────────
 
@@ -275,12 +253,13 @@ export const useFinanceStore = create<FinanceStore>()(
     processRecurring: async () => {
       await recurringApi.process();
       // Reload transactions and recurring from API after processing
-      const [transactions, recurring] = await Promise.all([
-        transactionsApi.getAll(),
+      const [txResult, recurring] = await Promise.all([
+        transactionsApi.getAll({ limit: '100' }),
         recurringApi.getAll(),
       ]);
       set(s => {
-        s.transactions = transactions.map(normalizeTransaction);
+        s.transactions = txResult.data.map(normalizeTransaction);
+        s.transactionsTotal = txResult.total;
         s.recurringTransactions = recurring.map(normalizeRecurring);
       });
     },
@@ -309,7 +288,7 @@ export const useFinanceStore = create<FinanceStore>()(
     // ── Goals ───────────────────────────────────────────────────────────────
 
     addGoal: async (goal) => {
-      const created = await goalsApi.create(goal);
+      const created = await goalsApi.create({ ...goal, isCompleted: false });
       set(s => { s.goals.push(normalizeGoal(created)); });
     },
 

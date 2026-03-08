@@ -1,16 +1,44 @@
-import type { Account, Category, Transaction, Budget, Goal, RecurringTransaction } from '../types';
+import type { Account, Category, Subcategory, Transaction, Budget, Goal, RecurringTransaction } from '../types';
 
 const BASE_URL = 'http://localhost:3001/api';
 
+function getToken(): string | null {
+  return localStorage.getItem('fintrack_token');
+}
+
+function getAuthHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+      ...(options?.headers as Record<string, string> | undefined),
+    },
     ...options,
   });
-  if (!res.ok) {
-    const error = await res.text();
-    throw new Error(`API error ${res.status}: ${error}`);
+
+  if (res.status === 401) {
+    localStorage.removeItem('fintrack_token');
+    window.location.href = '/';
+    throw new Error('Сессия истекла. Войдите снова.');
   }
+
+  if (!res.ok) {
+    const text = await res.text();
+    let message = `API error ${res.status}`;
+    try {
+      const json = JSON.parse(text);
+      if (json.error) message = json.error;
+    } catch {
+      if (text) message = text;
+    }
+    throw new Error(message);
+  }
+
   if (res.status === 204) return undefined as T;
   return res.json();
 }
@@ -37,7 +65,7 @@ export const accountsApi = {
 export const transactionsApi = {
   getAll: (params?: Record<string, string>) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-    return api.get<Transaction[]>(`/transactions${qs}`);
+    return api.get<{ data: Transaction[]; total: number }>(`/transactions${qs}`);
   },
   create: (data: Omit<Transaction, 'createdAt'> & { tags?: string }) =>
     api.post<Transaction>('/transactions', data),
@@ -55,6 +83,15 @@ export const categoriesApi = {
     api.put<Category>(`/categories/${id}`, data),
   reorder: (ids: string[]) => api.put('/categories/reorder', { ids }),
   remove: (id: string) => api.delete(`/categories/${id}`),
+};
+
+export const subcategoriesApi = {
+  getAll: () => api.get<Subcategory[]>('/subcategories'),
+  create: (data: Omit<Subcategory, 'id'> & { id?: string }) =>
+    api.post<Subcategory>('/subcategories', data),
+  update: (id: string, data: Partial<Subcategory>) =>
+    api.put<Subcategory>(`/subcategories/${id}`, data),
+  remove: (id: string) => api.delete(`/subcategories/${id}`),
 };
 
 export const budgetsApi = {

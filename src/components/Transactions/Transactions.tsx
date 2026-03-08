@@ -39,7 +39,7 @@ const parseSmartSearch = (q: string) => {
 };
 
 export const Transactions = () => {
-  const { transactions, categories, accounts, deleteTransaction } = useFinanceStore();
+  const { transactions, transactionsTotal, categories, accounts, deleteTransaction, loadMoreTransactions } = useFinanceStore();
   const [showModal, setShowModal] = useState(false);
   const [showRecurring, setShowRecurring] = useState(false);
   const [editId, setEditId] = useState<string | undefined>();
@@ -391,6 +391,20 @@ export const Transactions = () => {
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {transactions.length < transactionsTotal && (
+        <div className="flex items-center justify-center gap-3 py-2">
+          <span className="text-text-muted text-sm">
+            Загружено {transactions.length} из {transactionsTotal}
+          </span>
+          <button
+            onClick={() => loadMoreTransactions()}
+            className="px-4 py-2 rounded-xl border border-bg-border text-text-secondary hover:text-text-primary hover:border-brand/50 text-sm transition-all"
+          >
+            Загрузить ещё 100
+          </button>
         </div>
       )}
 

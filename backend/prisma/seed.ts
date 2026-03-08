@@ -30,6 +30,7 @@ async function main() {
   await prisma.transaction.deleteMany();
   await prisma.recurringTransaction.deleteMany();
   await prisma.budget.deleteMany();
+  await prisma.subcategory.deleteMany();
   await prisma.category.deleteMany();
   await prisma.account.deleteMany();
 
@@ -62,6 +63,23 @@ async function main() {
     await prisma.category.create({ data: cat });
   }
   console.log('Categories created');
+
+  // Subcategories
+  await prisma.subcategory.createMany({
+    data: [
+      { id: 'sub-taxi',      name: 'Такси',           categoryId: 'cat-transport' },
+      { id: 'sub-public',    name: 'Общественный',    categoryId: 'cat-transport' },
+      { id: 'sub-cafe',      name: 'Кафе',            categoryId: 'cat-food' },
+      { id: 'sub-grocery',   name: 'Продукты',        categoryId: 'cat-food' },
+      { id: 'sub-work-food', name: 'Рабочая еда',     categoryId: 'cat-food' },
+      { id: 'sub-subs',      name: 'Подписки',        categoryId: 'cat-digital' },
+      { id: 'sub-phone',     name: 'Телефон',         categoryId: 'cat-digital' },
+      { id: 'sub-internet',  name: 'Интернет',        categoryId: 'cat-digital' },
+      { id: 'sub-utilities', name: 'ЖКХ',             categoryId: 'cat-housing' },
+      { id: 'sub-rent',      name: 'Аренда',          categoryId: 'cat-housing' },
+    ],
+  });
+  console.log('Subcategories created');
 
   // Accounts
   await prisma.account.createMany({

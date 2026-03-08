@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { validate, AccountCreateSchema, AccountUpdateSchema } from '../schemas';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -15,7 +16,8 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
 // POST /api/accounts
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const account = await prisma.account.create({ data: req.body });
+    const data = validate(AccountCreateSchema, req.body);
+    const account = await prisma.account.create({ data });
     res.status(201).json(account);
   } catch (e) { next(e); }
 });
@@ -24,7 +26,8 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const account = await prisma.account.update({ where: { id }, data: req.body });
+    const data = validate(AccountUpdateSchema, req.body);
+    const account = await prisma.account.update({ where: { id }, data });
     res.json(account);
   } catch (e) { next(e); }
 });

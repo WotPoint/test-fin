@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
+import { validate, RecurringCreateSchema, RecurringUpdateSchema } from '../schemas';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -16,7 +17,7 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
 // POST /api/recurring
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { startDate, endDate, nextDate, lastProcessedDate, ...rest } = req.body;
+    const { startDate, endDate, nextDate, lastProcessedDate, ...rest } = validate(RecurringCreateSchema, req.body);
     const item = await prisma.recurringTransaction.create({
       data: {
         ...rest,
@@ -34,7 +35,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { startDate, endDate, nextDate, lastProcessedDate, ...rest } = req.body;
+    const { startDate, endDate, nextDate, lastProcessedDate, ...rest } = validate(RecurringUpdateSchema, req.body);
     const item = await prisma.recurringTransaction.update({
       where: { id },
       data: {
@@ -61,11 +62,11 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
 function getNextDate(current: Date, frequency: string): Date {
   const next = new Date(current);
   switch (frequency) {
-    case 'daily': next.setDate(next.getDate() + 1); break;
-    case 'weekly': next.setDate(next.getDate() + 7); break;
-    case 'monthly': next.setMonth(next.getMonth() + 1); break;
-    case 'quarterly': next.setMonth(next.getMonth() + 3); break;
-    case 'yearly': next.setFullYear(next.getFullYear() + 1); break;
+    case 'daily':     next.setDate(next.getDate() + 1);         break;
+    case 'weekly':    next.setDate(next.getDate() + 7);         break;
+    case 'monthly':   next.setMonth(next.getMonth() + 1);       break;
+    case 'quarterly': next.setMonth(next.getMonth() + 3);       break;
+    case 'yearly':    next.setFullYear(next.getFullYear() + 1); break;
   }
   return next;
 }
