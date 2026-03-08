@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { validate, GoalCreateSchema, GoalUpdateSchema, ContributionSchema } from '../schemas';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -18,12 +19,11 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
 // POST /api/goals
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { deadline, createdAt, contributions, ...rest } = req.body;
+    const { deadline, ...rest } = validate(GoalCreateSchema, req.body);
     const goal = await prisma.goal.create({
       data: {
         ...rest,
         ...(deadline ? { deadline: new Date(deadline) } : {}),
-        ...(createdAt ? { createdAt: new Date(createdAt) } : {}),
       },
       include: { contributions: true },
     });
@@ -35,7 +35,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { deadline, contributions, ...rest } = req.body;
+    const { deadline, ...rest } = validate(GoalUpdateSchema, req.body);
     const goal = await prisma.goal.update({
       where: { id },
       data: {
@@ -61,11 +61,10 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
 router.post('/:id/contributions', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id: goalId } = req.params;
-    const { amount, date } = req.body;
-    const contribution = await prisma.goalContribution.create({
+    const { amount, date } = validate(ContributionSchema, req.body);
+    await prisma.goalContribution.create({
       data: { goalId, amount, date: new Date(date) },
     });
-    // update currentAmount
     const goal = await prisma.goal.findUnique({
       where: { id: goalId },
       include: { contributions: true },

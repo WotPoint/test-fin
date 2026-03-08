@@ -1,13 +1,20 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
+import {
+  validate,
+  TransactionCreateSchema,
+  TransactionUpdateSchema,
+  BulkDeleteSchema,
+} from '../schemas';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-// GET /api/transactions
+// GET /api/transactions?limit=100&offset=0&type=&categoryId=&accountId=&dateFrom=&dateTo=
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { type, categoryId, accountId, dateFrom, dateTo } = req.query;
+    const { type, categoryId, accountId, dateFrom, dateTo, limit, offset } = req.query;
+
     const where: Record<string, unknown> = {};
     if (type) where.type = type;
     if (categoryId) where.categoryId = categoryId;
@@ -15,20 +22,29 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     if (dateFrom || dateTo) {
       where.date = {};
       if (dateFrom) (where.date as Record<string, unknown>).gte = new Date(dateFrom as string);
-      if (dateTo) (where.date as Record<string, unknown>).lte = new Date(dateTo as string);
+      if (dateTo)   (where.date as Record<string, unknown>).lte = new Date(dateTo as string);
     }
-    const transactions = await prisma.transaction.findMany({
-      where,
-      orderBy: { date: 'desc' },
-    });
-    res.json(transactions);
+
+    const take   = limit  ? Math.min(parseInt(limit  as string, 10), 500) : undefined;
+    const skip   = offset ? Math.max(parseInt(offset as string, 10), 0)   : 0;
+
+    const [data, total] = await Promise.all([
+      prisma.transaction.findMany({
+        where,
+        orderBy: { date: 'desc' },
+        ...(take !== undefined ? { take, skip } : {}),
+      }),
+      prisma.transaction.count({ where }),
+    ]);
+
+    res.json({ data, total });
   } catch (e) { next(e); }
 });
 
 // POST /api/transactions
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { date, ...rest } = req.body;
+    const { date, ...rest } = validate(TransactionCreateSchema, req.body);
     const transaction = await prisma.transaction.create({
       data: { ...rest, date: new Date(date) },
     });
@@ -40,7 +56,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { date, ...rest } = req.body;
+    const { date, ...rest } = validate(TransactionUpdateSchema, req.body);
     const transaction = await prisma.transaction.update({
       where: { id },
       data: { ...rest, ...(date ? { date: new Date(date) } : {}) },
@@ -52,7 +68,7 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
 // DELETE /api/transactions (bulk)
 router.delete('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { ids } = req.body as { ids: string[] };
+    const { ids } = validate(BulkDeleteSchema, req.body);
     await prisma.transaction.deleteMany({ where: { id: { in: ids } } });
     res.status(204).send();
   } catch (e) { next(e); }

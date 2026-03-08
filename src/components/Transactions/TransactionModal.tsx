@@ -57,7 +57,7 @@ export const TransactionModal = ({ onClose, editId, initialDate }: TransactionMo
     if (type === 'transfer' && !toAccountId) { toast.error('Выберите счёт назначения'); return; }
 
     const data = {
-      type, amount: amt, categoryId: type === 'transfer' ? 'cat-other-exp' : categoryId,
+      type, amount: amt, categoryId: type === 'transfer' ? '' : categoryId,
       subcategoryId: subcategoryId || undefined, accountId,
       toAccountId: type === 'transfer' ? toAccountId : undefined,
       date, comment: comment || undefined,

@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { validate, BudgetCreateSchema, BudgetUpdateSchema } from '../schemas';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -19,7 +20,8 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
 // POST /api/budgets
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const budget = await prisma.budget.create({ data: req.body });
+    const data = validate(BudgetCreateSchema, req.body);
+    const budget = await prisma.budget.create({ data });
     res.status(201).json(budget);
   } catch (e) { next(e); }
 });
@@ -28,7 +30,8 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const budget = await prisma.budget.update({ where: { id }, data: req.body });
+    const data = validate(BudgetUpdateSchema, req.body);
+    const budget = await prisma.budget.update({ where: { id }, data });
     res.json(budget);
   } catch (e) { next(e); }
 });
