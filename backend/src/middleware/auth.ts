@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-export const JWT_SECRET = 'fintrack-herasova-jwt-secret-key-2024';
+export const JWT_SECRET = process.env.JWT_SECRET || 'fintrack-herasova-jwt-secret-key-2024';
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;

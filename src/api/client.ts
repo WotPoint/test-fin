@@ -1,6 +1,6 @@
 import type { Account, Category, Subcategory, Transaction, Budget, Goal, RecurringTransaction } from '../types';
 
-const BASE_URL = 'http://localhost:3001/api';
+const BASE_URL = '/api';
 
 function getToken(): string | null {
   return localStorage.getItem('fintrack_token');

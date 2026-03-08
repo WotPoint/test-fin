@@ -5,8 +5,8 @@ import { JWT_SECRET } from '../middleware/auth';
 
 const router = Router();
 
-const USERNAME = 'Herasova';
-const PASSWORD = '1Q2w3e4r';
+const USERNAME = process.env.APP_USERNAME || 'Herasova';
+const PASSWORD = process.env.APP_PASSWORD || '1Q2w3e4r';
 
 const LoginSchema = z.object({
   username: z.string().min(1),

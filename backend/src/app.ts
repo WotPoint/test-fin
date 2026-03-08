@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import rateLimit from 'express-rate-limit';
 import { errorHandler } from './middleware/errorHandler';
 import { authMiddleware } from './middleware/auth';
@@ -34,7 +35,10 @@ const authLimiter = rateLimit({
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
-app.use(cors({ origin: 'http://localhost:5173' }));
+const corsOrigin = process.env.CORS_ORIGIN;
+if (corsOrigin) {
+  app.use(cors({ origin: corsOrigin }));
+}
 app.use(express.json({ limit: '1mb' }));
 app.use(generalLimiter);
 
@@ -54,6 +58,18 @@ app.use('/api/subcategories',  subcategoriesRouter);
 app.use('/api/budgets',        budgetsRouter);
 app.use('/api/goals',          goalsRouter);
 app.use('/api/recurring',      recurringRouter);
+
+// 404 для неизвестных /api маршрутов
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// Раздача React SPA в продакшене
+const distPath = path.join(__dirname, '../../dist');
+app.use(express.static(distPath));
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
+});
 
 app.use(errorHandler);
 

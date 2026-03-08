@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+backend/node_modules/
+
+# Build output
+dist/
+backend/dist/
+
+# Environment files (secrets — set via Amvera dashboard in production)
+.env
+backend/.env
+*.env.local
+
+# Database (stored in /data persistent volume on Amvera)
+backend/prisma/*.db
+backend/prisma/*.db-shm
+backend/prisma/*.db-wal
+
+# Vite cache
+node_modules/.vite/
+
+# OS
+.DS_Store
+Thumbs.db
