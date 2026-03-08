@@ -19,6 +19,9 @@ backend/prisma/*.db-wal
 # Vite cache
 node_modules/.vite/
 
+# Claude reference file (personal, not for repo)
+CLAUDE.md
+
 # OS
 .DS_Store
 Thumbs.db

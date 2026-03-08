@@ -15,6 +15,8 @@ import recurringRouter from './routes/recurring';
 
 const app = express();
 
+app.set('trust proxy', 1);
+
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 
 const generalLimiter = rateLimit({
