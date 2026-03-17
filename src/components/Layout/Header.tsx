@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, Bell, Search, Menu, X, AlertTriangle, Target, Clock } from 'lucide-react';
-import { TransactionModal } from '../Transactions/TransactionModal';
+import { TransactionModal } from '../../pages/Transactions/TransactionModal';
 import { SearchModal } from './SearchModal';
 import { useFinanceStore, AppNotification } from '../../store/useFinanceStore';
 import { clsx } from 'clsx';

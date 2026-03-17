@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Download, FileText, FileSpreadsheet, Calendar, TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
+import { useState, useMemo, Fragment } from 'react';
+import { Download, FileText, FileSpreadsheet, Calendar, TrendingUp, TrendingDown, BarChart3, ChevronRight } from 'lucide-react';
 import { format, subMonths, subQuarters, subYears, parseISO, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, startOfYear, endOfYear } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { clsx } from 'clsx';
@@ -16,6 +16,15 @@ export const Reports = () => {
   const [period, setPeriod] = useState<ReportPeriod>('month');
   const [customStart, setCustomStart] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [customEnd, setCustomEnd] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
+
+  const toggleCat = (id: string) => {
+    setExpandedCats(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
 
   const now = new Date();
 
@@ -233,38 +242,86 @@ export const Reports = () => {
             </thead>
             <tbody>
               {catBreakdown.map(({ cat, income: catInc, expense: catExp }, i) => {
-                const catTxCount = filteredTx.filter(t => t.categoryId === cat!.id).length;
+                const catTxs = filteredTx
+                  .filter(t => t.categoryId === cat!.id)
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                const catTxCount = catTxs.length;
                 const share = expense > 0 && catExp > 0 ? Math.round((catExp / expense) * 100) : 0;
+                const isExpanded = expandedCats.has(cat!.id);
+                const isLast = i === catBreakdown.length - 1;
                 return (
-                  <tr key={cat!.id} className={clsx('border-b border-bg-border hover:bg-bg-hover transition-colors',
-                    i === catBreakdown.length - 1 ? 'border-b-0' : '')}>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs"
-                          style={{ background: cat!.color + '20', color: cat!.color }}>
-                          {cat!.name[0]}
-                        </div>
-                        <span className="text-text-primary text-sm">{cat!.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      {catInc > 0 ? <span className="text-income text-sm font-mono">+{formatMoney(catInc)}</span> : <span className="text-text-muted text-sm">—</span>}
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      {catExp > 0 ? <span className="text-expense text-sm font-mono">-{formatMoney(catExp)}</span> : <span className="text-text-muted text-sm">—</span>}
-                    </td>
-                    <td className="px-5 py-3 text-right text-text-secondary text-sm">{catTxCount}</td>
-                    <td className="px-5 py-3 text-right">
-                      {share > 0 ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <div className="w-16 h-1.5 rounded-full bg-bg-border overflow-hidden">
-                            <div className="h-full rounded-full" style={{ width: `${share}%`, background: cat!.color }} />
+                  <Fragment key={cat!.id}>
+                    <tr
+                      onClick={() => toggleCat(cat!.id)}
+                      className={clsx('border-b border-bg-border hover:bg-bg-hover transition-colors cursor-pointer select-none',
+                        isLast && !isExpanded ? 'border-b-0' : '')}>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <ChevronRight size={14}
+                            className={clsx('text-text-muted transition-transform flex-shrink-0', isExpanded && 'rotate-90')} />
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs"
+                            style={{ background: cat!.color + '20', color: cat!.color }}>
+                            {cat!.name[0]}
                           </div>
-                          <span className="text-text-muted text-xs w-8 text-right">{share}%</span>
+                          <span className="text-text-primary text-sm">{cat!.name}</span>
                         </div>
-                      ) : <span className="text-text-muted text-sm">—</span>}
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        {catInc > 0
+                          ? <span className="text-income text-sm font-mono">+{formatMoney(catInc)}</span>
+                          : <span className="text-text-muted text-sm">—</span>}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        {catExp > 0
+                          ? <span className="text-expense text-sm font-mono">-{formatMoney(catExp)}</span>
+                          : <span className="text-text-muted text-sm">—</span>}
+                      </td>
+                      <td className="px-5 py-3 text-right text-text-secondary text-sm">{catTxCount}</td>
+                      <td className="px-5 py-3 text-right">
+                        {share > 0 ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="w-16 h-1.5 rounded-full bg-bg-border overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: `${share}%`, background: cat!.color }} />
+                            </div>
+                            <span className="text-text-muted text-xs w-8 text-right">{share}%</span>
+                          </div>
+                        ) : <span className="text-text-muted text-sm">—</span>}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className={clsx('border-b border-bg-border bg-bg-secondary/40', isLast && 'border-b-0')}>
+                        <td colSpan={5} className="px-5 py-2">
+                          <div className="ml-9 border-l-2 pl-4" style={{ borderColor: cat!.color + '60' }}>
+                            {catTxs.length === 0
+                              ? <p className="text-text-muted text-xs py-2">Нет транзакций</p>
+                              : catTxs.map((tx, ti) => {
+                                  const acc = accounts.find(a => a.id === tx.accountId);
+                                  return (
+                                    <div key={tx.id}
+                                      className={clsx('flex items-center gap-3 py-2',
+                                        ti < catTxs.length - 1 && 'border-b border-bg-border/50')}>
+                                      <span className="text-text-muted text-xs w-20 flex-shrink-0 font-mono">
+                                        {format(parseISO(tx.date), 'dd.MM.yyyy')}
+                                      </span>
+                                      <span className="text-text-secondary text-xs flex-1 truncate">
+                                        {tx.comment || '—'}
+                                      </span>
+                                      {acc && (
+                                        <span className="text-text-muted text-xs flex-shrink-0">{acc.name}</span>
+                                      )}
+                                      <span className={clsx('font-mono text-xs font-semibold flex-shrink-0',
+                                        tx.type === 'income' ? 'text-income' : tx.type === 'expense' ? 'text-expense' : 'text-brand')}>
+                                        {tx.type === 'income' ? '+' : tx.type === 'expense' ? '−' : ''}{formatMoney(tx.amount)}
+                                      </span>
+                                    </div>
+                                  );
+                                })
+                            }
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Plus, Target, Trash2, Edit2, CheckCircle2, PlusCircle, ChevronDown, ChevronUp, Plane, Shield, Laptop, Home, Car, Star, Gift, Smartphone } from 'lucide-react';
 import { clsx } from 'clsx';
-import { ConfirmDialog } from '../UI/ConfirmDialog';
+import { ConfirmDialog } from '../../components/UI/ConfirmDialog';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useFinanceStore } from '../../store/useFinanceStore';

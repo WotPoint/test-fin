@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { validate, BudgetCreateSchema, BudgetUpdateSchema } from '../schemas';
+import { validate, BudgetCreateSchema, BudgetUpdateSchema } from '../validation/schemas';
 
 const router = Router();
 const prisma = new PrismaClient();

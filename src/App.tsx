@@ -3,18 +3,18 @@ import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { Sidebar } from './components/Layout/Sidebar';
 import { Header } from './components/Layout/Header';
-import { Dashboard } from './components/Dashboard/Dashboard';
-import { Transactions } from './components/Transactions/Transactions';
-import { Accounts } from './components/Accounts/Accounts';
-import { Budgets } from './components/Budgets/Budgets';
-import { Goals } from './components/Goals/Goals';
-import { Analytics } from './components/Analytics/Analytics';
-import { Calendar } from './components/Calendar/Calendar';
-import { Reports } from './components/Reports/Reports';
+import { Dashboard } from './pages/Dashboard/Dashboard';
+import { Transactions } from './pages/Transactions/Transactions';
+import { Accounts } from './pages/Accounts/Accounts';
+import { Budgets } from './pages/Budgets/Budgets';
+import { Goals } from './pages/Goals/Goals';
+import { Analytics } from './pages/Analytics/Analytics';
+import { Calendar } from './pages/Calendar/Calendar';
+import { Reports } from './pages/Reports/Reports';
 import { useFinanceStore } from './store/useFinanceStore';
 import { useThemeStore } from './store/useThemeStore';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import { LoginPage } from './components/Auth/LoginPage';
+import { ErrorBoundary } from './components/UI/ErrorBoundary';
+import { LoginPage } from './pages/Auth/LoginPage';
 
 const PAGE_META: Record<string, { title: string; subtitle?: string }> = {
   '/':             { title: 'Дашборд',              subtitle: 'Обзор финансов' },
@@ -91,6 +91,12 @@ const AppContent = () => {
 
 function App() {
   const [isAuthed, setIsAuthed] = useState(() => !!localStorage.getItem('fintrack_token'));
+
+  useEffect(() => {
+    const handler = () => setIsAuthed(false);
+    window.addEventListener('fintrack:auth-expired', handler);
+    return () => window.removeEventListener('fintrack:auth-expired', handler);
+  }, []);
 
   if (!isAuthed) {
     return (

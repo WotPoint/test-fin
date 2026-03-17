@@ -23,7 +23,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (res.status === 401) {
     localStorage.removeItem('fintrack_token');
-    window.location.href = '/';
+    window.dispatchEvent(new Event('fintrack:auth-expired'));
     throw new Error('Сессия истекла. Войдите снова.');
   }
 

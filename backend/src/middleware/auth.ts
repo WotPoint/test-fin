@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-export const JWT_SECRET = process.env.JWT_SECRET || 'fintrack-herasova-jwt-secret-key-2024';
+const _jwtSecret = process.env.JWT_SECRET;
+if (!_jwtSecret) throw new Error('JWT_SECRET environment variable is required');
+export const JWT_SECRET = _jwtSecret;
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;

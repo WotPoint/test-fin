@@ -5,7 +5,7 @@ import {
   CategoryCreateSchema,
   CategoryUpdateSchema,
   ReorderSchema,
-} from '../schemas';
+} from '../validation/schemas';
 
 const router = Router();
 const prisma = new PrismaClient();

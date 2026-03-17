@@ -125,6 +125,7 @@ export const useFinanceStore = create<FinanceStore>()(
       } catch (e) {
         console.error('Failed to load data from API:', e);
         set(s => { s.isLoading = false; });
+        toast.error('Не удалось загрузить данные. Проверьте подключение.');
       }
     },
 
@@ -251,17 +252,21 @@ export const useFinanceStore = create<FinanceStore>()(
     },
 
     processRecurring: async () => {
-      await recurringApi.process();
-      // Reload transactions and recurring from API after processing
-      const [txResult, recurring] = await Promise.all([
-        transactionsApi.getAll({ limit: '100' }),
-        recurringApi.getAll(),
-      ]);
-      set(s => {
-        s.transactions = txResult.data.map(normalizeTransaction);
-        s.transactionsTotal = txResult.total;
-        s.recurringTransactions = recurring.map(normalizeRecurring);
-      });
+      const result = await recurringApi.process();
+      // Always update recurring rules (nextDate changes)
+      const recurring = await recurringApi.getAll();
+      set(s => { s.recurringTransactions = recurring.map(normalizeRecurring); });
+      // Only reload transactions if new ones were actually created — preserve pagination
+      if (result.created > 0) {
+        const { transactions } = get();
+        const txResult = await transactionsApi.getAll({
+          limit: String(Math.max(100, transactions.length)),
+        });
+        set(s => {
+          s.transactions = txResult.data.map(normalizeTransaction);
+          s.transactionsTotal = txResult.total;
+        });
+      }
     },
 
     // ── Budgets ─────────────────────────────────────────────────────────────
@@ -348,8 +353,22 @@ export const useFinanceStore = create<FinanceStore>()(
     },
 
     getTotalBalance: () => {
-      const { accounts } = get();
-      return accounts.filter(a => !a.isArchived).reduce((sum, a) => sum + get().getAccountBalance(a.id), 0);
+      const { accounts, transactions } = get();
+      const activeAccounts = accounts.filter(a => !a.isArchived);
+      // Single O(n+m) pass instead of O(n*m)
+      const balMap: Record<string, number> = {};
+      activeAccounts.forEach(a => { balMap[a.id] = a.initialBalance; });
+      transactions.forEach(tx => {
+        if (balMap[tx.accountId] !== undefined) {
+          if (tx.type === 'income') balMap[tx.accountId] += tx.amount;
+          else if (tx.type === 'expense') balMap[tx.accountId] -= tx.amount;
+          else if (tx.type === 'transfer') balMap[tx.accountId] -= tx.amount;
+        }
+        if (tx.toAccountId && balMap[tx.toAccountId] !== undefined && tx.type === 'transfer') {
+          balMap[tx.toAccountId] += tx.amount;
+        }
+      });
+      return Object.values(balMap).reduce((s, v) => s + v, 0);
     },
 
     getMonthlyStats: (month, year) => {

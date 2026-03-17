@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { validate, AccountCreateSchema, AccountUpdateSchema } from '../schemas';
+import { validate, AccountCreateSchema, AccountUpdateSchema } from '../validation/schemas';
 
 const router = Router();
 const prisma = new PrismaClient();

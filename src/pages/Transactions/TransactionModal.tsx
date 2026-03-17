@@ -6,6 +6,60 @@ import { clsx } from 'clsx';
 import { useFinanceStore } from '../../store/useFinanceStore';
 import { TransactionType } from '../../types';
 
+// Safe arithmetic formula evaluator (no eval)
+// Supports: + - * / and parentheses, spaces ignored
+const evalFormula = (expr: string): number | null => {
+  const str = expr.replace(/\s/g, '').replace(/,/g, '.');
+  if (!/^[\d.+\-*/()]+$/.test(str)) return null;
+  try {
+    const tokens = str.match(/\d+\.?\d*|[+\-*/()]/g);
+    if (!tokens) return null;
+
+    let pos = 0;
+    const peek = () => tokens[pos];
+    const consume = () => tokens[pos++];
+
+    const parseExpr = (): number => {
+      let left = parseTerm();
+      while (peek() === '+' || peek() === '-') {
+        const op = consume();
+        const right = parseTerm();
+        left = op === '+' ? left + right : left - right;
+      }
+      return left;
+    };
+    const parseTerm = (): number => {
+      let left = parseFactor();
+      while (peek() === '*' || peek() === '/') {
+        const op = consume();
+        const right = parseFactor();
+        if (op === '/' && right === 0) throw new Error('div0');
+        left = op === '*' ? left * right : left / right;
+      }
+      return left;
+    };
+    const parseFactor = (): number => {
+      if (peek() === '(') {
+        consume();
+        const val = parseExpr();
+        consume(); // ')'
+        return val;
+      }
+      if (peek() === '-') { consume(); return -parseFactor(); }
+      const n = parseFloat(consume());
+      if (isNaN(n)) throw new Error('nan');
+      return n;
+    };
+
+    const result = parseExpr();
+    return isFinite(result) && result > 0 ? Math.round(result * 100) / 100 : null;
+  } catch {
+    return null;
+  }
+};
+
+const isFormula = (s: string) => /[+\-*/()]/.test(s);
+
 interface TransactionModalProps {
   onClose: () => void;
   editId?: string;
@@ -21,12 +75,18 @@ export const TransactionModal = ({ onClose, editId, initialDate }: TransactionMo
   const [amount, setAmount] = useState(editing?.amount?.toString() || '');
   const [categoryId, setCategoryId] = useState(editing?.categoryId || '');
   const [subcategoryId, setSubcategoryId] = useState(editing?.subcategoryId || '');
-  const [accountId, setAccountId] = useState(editing?.accountId || (accounts[0]?.id || ''));
+  const [accountId, setAccountId] = useState(
+    editing?.accountId ||
+    accounts.find(a => !a.isArchived && a.type === 'card')?.id ||
+    accounts.find(a => !a.isArchived)?.id ||
+    ''
+  );
   const [toAccountId, setToAccountId] = useState(editing?.toAccountId || '');
   const [date, setDate] = useState(editing?.date || initialDate || format(new Date(), 'yyyy-MM-dd'));
   const [comment, setComment] = useState(editing?.comment || '');
   const [tags, setTags] = useState<string[]>(editing?.tags || []);
   const [tagInput, setTagInput] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const filteredCats = categories.filter(c => c.type === (type === 'transfer' ? 'expense' : type) && !c.isArchived);
   const filteredSubs = subcategories.filter(s => s.categoryId === categoryId);
@@ -48,9 +108,10 @@ export const TransactionModal = ({ onClose, editId, initialDate }: TransactionMo
 
   const removeTag = (tag: string) => setTags(prev => prev.filter(t => t !== tag));
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const amt = parseFloat(amount);
+    if (isSubmitting) return;
+    const amt = isFormula(amount) ? evalFormula(amount) : parseFloat(amount);
     if (!amt || amt <= 0) { toast.error('Введите корректную сумму'); return; }
     if (type !== 'transfer' && !categoryId) { toast.error('Выберите категорию'); return; }
     if (!accountId) { toast.error('Выберите счёт'); return; }
@@ -64,14 +125,21 @@ export const TransactionModal = ({ onClose, editId, initialDate }: TransactionMo
       tags: tags.length > 0 ? tags : undefined,
     };
 
-    if (editId) {
-      updateTransaction(editId, data);
-      toast.success('Транзакция обновлена');
-    } else {
-      addTransaction(data);
-      toast.success(type === 'income' ? 'Доход добавлен!' : type === 'expense' ? 'Расход добавлен!' : 'Перевод выполнен!');
+    setIsSubmitting(true);
+    try {
+      if (editId) {
+        await updateTransaction(editId, data);
+        toast.success('Транзакция обновлена');
+      } else {
+        await addTransaction(data);
+        toast.success(type === 'income' ? 'Доход добавлен!' : type === 'expense' ? 'Расход добавлен!' : 'Перевод выполнен!');
+      }
+      onClose();
+    } catch {
+      toast.error('Не удалось сохранить транзакцию');
+    } finally {
+      setIsSubmitting(false);
     }
-    onClose();
   };
 
   return (
@@ -106,12 +174,22 @@ export const TransactionModal = ({ onClose, editId, initialDate }: TransactionMo
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary font-mono">₽</span>
               <input
-                type="number" value={amount} onChange={e => setAmount(e.target.value)}
-                placeholder="0" min="0" step="0.01" required
+                type="text" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)}
+                placeholder="0 или 100+50*2" required
                 className="w-full bg-bg-secondary border border-bg-border rounded-xl pl-8 pr-4 py-3 text-text-primary font-mono text-lg
                   focus:outline-none focus:border-brand transition-colors placeholder-text-muted"
               />
             </div>
+            {isFormula(amount) && (
+              <p className="mt-1.5 text-xs font-mono pl-1">
+                {(() => {
+                  const result = evalFormula(amount);
+                  return result !== null
+                    ? <span className="text-brand">= {result.toLocaleString('ru-RU')} ₽</span>
+                    : <span className="text-expense">Некорректная формула</span>;
+                })()}
+              </p>
+            )}
           </div>
 
           {/* Category (not for transfer) */}
@@ -214,14 +292,14 @@ export const TransactionModal = ({ onClose, editId, initialDate }: TransactionMo
           </div>
 
           {/* Submit */}
-          <button type="submit"
-            className={clsx('w-full py-3.5 rounded-xl font-semibold text-sm transition-all',
+          <button type="submit" disabled={isSubmitting}
+            className={clsx('w-full py-3.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed',
               type === 'income'
                 ? 'bg-income hover:bg-income/90 text-white'
                 : type === 'expense'
                   ? 'bg-expense hover:bg-expense/90 text-white'
                   : 'bg-brand hover:bg-brand-light text-bg-primary')}>
-            {editId ? 'Сохранить' : type === 'income' ? 'Добавить доход' : type === 'expense' ? 'Добавить расход' : 'Выполнить перевод'}
+            {isSubmitting ? 'Сохранение...' : editId ? 'Сохранить' : type === 'income' ? 'Добавить доход' : type === 'expense' ? 'Добавить расход' : 'Выполнить перевод'}
           </button>
         </form>
       </div>

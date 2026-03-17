@@ -5,8 +5,10 @@ import { JWT_SECRET } from '../middleware/auth';
 
 const router = Router();
 
-const USERNAME = process.env.APP_USERNAME || 'Herasova';
-const PASSWORD = process.env.APP_PASSWORD || '1Q2w3e4r';
+const USERNAME = process.env.APP_USERNAME;
+if (!USERNAME) throw new Error('APP_USERNAME environment variable is required');
+const PASSWORD = process.env.APP_PASSWORD;
+if (!PASSWORD) throw new Error('APP_PASSWORD environment variable is required');
 
 const LoginSchema = z.object({
   username: z.string().min(1),

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Plus, Search, Trash2, Edit2, ArrowUpDown, Repeat, CheckSquare, Square, X } from 'lucide-react';
-import { ConfirmDialog } from '../UI/ConfirmDialog';
+import { ConfirmDialog } from '../../components/UI/ConfirmDialog';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import { useFinanceStore } from '../../store/useFinanceStore';
@@ -152,7 +152,9 @@ export const Transactions = () => {
       if (!groups[d]) groups[d] = [];
       groups[d].push(tx);
     });
-    return Object.entries(groups).sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime());
+    return Object.entries(groups)
+      .sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime())
+      .map(([date, txs]) => [date, [...txs].sort((a, b) => b.amount - a.amount)] as const);
   }, [paged]);
 
   const totalIncome = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);

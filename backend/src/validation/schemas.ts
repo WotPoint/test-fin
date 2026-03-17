@@ -26,8 +26,8 @@ function formatErrors(error: ZodError): string {
 export const AccountCreateSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1).max(100),
-  type: z.string().min(1),
-  currency: z.string().default('RUB'),
+  type: z.enum(['cash', 'card', 'ewallet', 'savings', 'investment']),
+  currency: z.enum(['RUB', 'USD', 'EUR', 'GBP', 'CNY']).default('RUB'),
   initialBalance: z.number().default(0),
   color: z.string().min(1),
   icon: z.string().min(1),
@@ -75,7 +75,7 @@ export const TransactionCreateSchema = z.object({
 export const TransactionUpdateSchema = TransactionCreateSchema.partial().omit({ id: true });
 
 export const BulkDeleteSchema = z.object({
-  ids: z.array(z.string()).min(1),
+  ids: z.array(z.string()).min(1).max(500),
 });
 
 // ─── Budgets ─────────────────────────────────────────────────────────────────

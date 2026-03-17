@@ -348,7 +348,7 @@ export const Analytics = () => {
                     paddingAngle={2} dataKey="value">
                     {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                   </Pie>
-                  <Tooltip formatter={(v: number) => formatMoney(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }} />
+                  <Tooltip formatter={(v: number) => formatMoney(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }} labelStyle={{ color: 'var(--text-secondary)' }} itemStyle={{ color: 'var(--text-primary)' }} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex-1 space-y-2">
@@ -388,6 +388,7 @@ export const Analytics = () => {
             <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 10 }} axisLine={false} tickLine={false}
               tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}К` : `${v}`} width={35} />
             <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }}
+              labelStyle={{ color: 'var(--text-secondary)' }} itemStyle={{ color: 'var(--text-primary)' }}
               formatter={(v: number) => [formatMoney(v), 'Расход']} />
             <Area type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2} fill="url(#expDay)" />
           </AreaChart>
@@ -448,6 +449,7 @@ export const Analytics = () => {
               <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false}
                 tickFormatter={v => `${(v / 1000).toFixed(0)}К`} width={40} />
               <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }}
+                labelStyle={{ color: 'var(--text-secondary)' }} itemStyle={{ color: 'var(--text-primary)' }}
                 formatter={(v: number) => [formatMoney(v), 'Баланс']} />
               <Area type="monotone" dataKey="balance" stroke="#00d4aa" strokeWidth={2.5}
                 fill="url(#balGrad)" dot={{ fill: '#00d4aa', r: 4 }} />

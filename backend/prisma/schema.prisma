@@ -38,10 +38,11 @@ model Category {
 }
 
 model Subcategory {
-  id         String   @id @default(uuid())
-  name       String
-  categoryId String
-  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  id           String        @id @default(uuid())
+  name         String
+  categoryId   String
+  category     Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
 }
 
 model Transaction {
@@ -56,9 +57,10 @@ model Transaction {
   comment       String?
   tags          String    @default("[]")
   recurringId   String?
-  account       Account   @relation("FromAccount", fields: [accountId], references: [id])
-  toAccount     Account?  @relation("ToAccount", fields: [toAccountId], references: [id])
-  category      Category? @relation(fields: [categoryId], references: [id])
+  account       Account      @relation("FromAccount", fields: [accountId], references: [id])
+  toAccount     Account?     @relation("ToAccount", fields: [toAccountId], references: [id])
+  category      Category?    @relation(fields: [categoryId], references: [id])
+  subcategory   Subcategory? @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
 
   @@index([date])
   @@index([accountId])
@@ -73,6 +75,8 @@ model Budget {
   year           Int
   alertThreshold Int      @default(80)
   category       Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([categoryId, month, year])
 }
 
 model Goal {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X, Plus, Trash2, RefreshCw, Play, Pause, Edit2, Check } from 'lucide-react';
-import { ConfirmDialog } from '../UI/ConfirmDialog';
+import { ConfirmDialog } from '../../components/UI/ConfirmDialog';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';

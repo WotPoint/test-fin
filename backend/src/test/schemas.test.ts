@@ -15,7 +15,7 @@ import {
   SubcategoryCreateSchema,
   SubcategoryUpdateSchema,
   RecurringCreateSchema,
-} from '../schemas';
+} from '../validation/schemas';
 
 // ─── validate() helper ────────────────────────────────────────────────────────
 

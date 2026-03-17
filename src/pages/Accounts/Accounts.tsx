@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Plus, Edit2, Trash2, ArrowLeftRight, Banknote, CreditCard, Wallet, PiggyBank, TrendingUp, Eye, EyeOff, SlidersHorizontal, X, Check } from 'lucide-react';
 import { clsx } from 'clsx';
-import { ConfirmDialog } from '../UI/ConfirmDialog';
+import { ConfirmDialog } from '../../components/UI/ConfirmDialog';
 import toast from 'react-hot-toast';
 import { useFinanceStore } from '../../store/useFinanceStore';
 import { AccountModal } from './AccountModal';

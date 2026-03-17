@@ -5,7 +5,7 @@ import {
   TransactionCreateSchema,
   TransactionUpdateSchema,
   BulkDeleteSchema,
-} from '../schemas';
+} from '../validation/schemas';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -14,6 +14,14 @@ const prisma = new PrismaClient();
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { type, categoryId, accountId, dateFrom, dateTo, limit, offset } = req.query;
+
+    const dateRe = /^\d{4}-\d{2}-\d{2}(T[\d:.Z+-]*)?$/;
+    if (dateFrom && !dateRe.test(dateFrom as string)) {
+      res.status(400).json({ error: 'Неверный формат dateFrom (ожидается YYYY-MM-DD)' }); return;
+    }
+    if (dateTo && !dateRe.test(dateTo as string)) {
+      res.status(400).json({ error: 'Неверный формат dateTo (ожидается YYYY-MM-DD)' }); return;
+    }
 
     const where: Record<string, unknown> = {};
     if (type) where.type = type;

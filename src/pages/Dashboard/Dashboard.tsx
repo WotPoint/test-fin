@@ -151,6 +151,7 @@ export const Dashboard = () => {
               <Tooltip
                 contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }}
                 labelStyle={{ color: 'var(--text-secondary)' }}
+                itemStyle={{ color: 'var(--text-primary)' }}
                 formatter={(v: number, name) => [formatMoney(v), name === 'income' ? 'Доход' : 'Расход']}
               />
               <Area type="monotone" dataKey="income" stroke="#22c55e" strokeWidth={2} fill="url(#incGrad)" />
@@ -174,6 +175,8 @@ export const Dashboard = () => {
                   </Pie>
                   <Tooltip
                     contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }}
+                    labelStyle={{ color: 'var(--text-secondary)' }}
+                    itemStyle={{ color: 'var(--text-primary)' }}
                     formatter={(v: number) => [formatMoney(v), '']}
                   />
                 </PieChart>
@@ -211,6 +214,8 @@ export const Dashboard = () => {
                 tickFormatter={v => `${(v / 1000).toFixed(0)}К`} width={35} />
               <Tooltip
                 contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--bg-border)', borderRadius: 8 }}
+                labelStyle={{ color: 'var(--text-secondary)' }}
+                itemStyle={{ color: 'var(--text-primary)' }}
                 formatter={(v: number, n) => [formatMoney(v), n === 'income' ? 'Доход' : 'Расход']}
               />
               <Bar dataKey="income" fill="#22c55e" radius={[3, 3, 0, 0]} />

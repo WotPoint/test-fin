@@ -1,7 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
-import { validate, RecurringCreateSchema, RecurringUpdateSchema } from '../schemas';
+import { addDays, addMonths, addQuarters, addYears } from 'date-fns';
+import { validate, RecurringCreateSchema, RecurringUpdateSchema } from '../validation/schemas';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -60,15 +61,14 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
 });
 
 function getNextDate(current: Date, frequency: string): Date {
-  const next = new Date(current);
   switch (frequency) {
-    case 'daily':     next.setDate(next.getDate() + 1);         break;
-    case 'weekly':    next.setDate(next.getDate() + 7);         break;
-    case 'monthly':   next.setMonth(next.getMonth() + 1);       break;
-    case 'quarterly': next.setMonth(next.getMonth() + 3);       break;
-    case 'yearly':    next.setFullYear(next.getFullYear() + 1); break;
+    case 'daily':     return addDays(current, 1);
+    case 'weekly':    return addDays(current, 7);
+    case 'monthly':   return addMonths(current, 1);
+    case 'quarterly': return addQuarters(current, 1);
+    case 'yearly':    return addYears(current, 1);
+    default:          return addMonths(current, 1);
   }
-  return next;
 }
 
 // POST /api/recurring/process — generate transactions up to today
