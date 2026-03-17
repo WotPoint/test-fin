@@ -12,9 +12,9 @@ backend/.env
 *.env.local
 
 # Database (stored in /data persistent volume on Amvera)
-backend/prisma/*.db
-backend/prisma/*.db-shm
-backend/prisma/*.db-wal
+backend/prisma/**/*.db
+backend/prisma/**/*.db-shm
+backend/prisma/**/*.db-wal
 
 # Vite cache
 node_modules/.vite/
