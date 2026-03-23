@@ -207,6 +207,9 @@ export const useFinanceStore = create<FinanceStore>()(
       };
       const created = await transactionsApi.create(body as Parameters<typeof transactionsApi.create>[0]);
       set(s => { s.transactions.push(normalizeTransaction(created)); });
+      // Refresh server-computed balances
+      const accounts = await accountsApi.getAll();
+      set(s => { s.accounts = accounts.map(normalizeAccount); });
     },
 
     updateTransaction: async (id, updates) => {
@@ -219,16 +222,25 @@ export const useFinanceStore = create<FinanceStore>()(
         const i = s.transactions.findIndex(t => t.id === id);
         if (i !== -1) s.transactions[i] = normalizeTransaction(updated);
       });
+      // Refresh server-computed balances
+      const accounts = await accountsApi.getAll();
+      set(s => { s.accounts = accounts.map(normalizeAccount); });
     },
 
     deleteTransaction: async (id) => {
       await transactionsApi.remove(id);
       set(s => { s.transactions = s.transactions.filter(t => t.id !== id); });
+      // Refresh server-computed balances
+      const accounts = await accountsApi.getAll();
+      set(s => { s.accounts = accounts.map(normalizeAccount); });
     },
 
     bulkDeleteTransactions: async (ids) => {
       await transactionsApi.bulkRemove(ids);
       set(s => { s.transactions = s.transactions.filter(t => !ids.includes(t.id)); });
+      // Refresh server-computed balances
+      const accounts = await accountsApi.getAll();
+      set(s => { s.accounts = accounts.map(normalizeAccount); });
     },
 
     // ── Recurring ───────────────────────────────────────────────────────────
@@ -335,40 +347,18 @@ export const useFinanceStore = create<FinanceStore>()(
     // ── Selectors ───────────────────────────────────────────────────────────
 
     getAccountBalance: (accountId) => {
-      const { accounts, transactions } = get();
+      const { accounts } = get();
       const account = accounts.find(a => a.id === accountId);
       if (!account) return 0;
-      let balance = account.initialBalance;
-      transactions.forEach(tx => {
-        if (tx.accountId === accountId) {
-          if (tx.type === 'income') balance += tx.amount;
-          else if (tx.type === 'expense') balance -= tx.amount;
-          else if (tx.type === 'transfer') balance -= tx.amount;
-        }
-        if (tx.toAccountId === accountId && tx.type === 'transfer') {
-          balance += tx.amount;
-        }
-      });
-      return balance;
+      // Use server-computed balance (always correct, not limited by pagination)
+      return account.balance ?? account.initialBalance;
     },
 
     getTotalBalance: () => {
-      const { accounts, transactions } = get();
-      const activeAccounts = accounts.filter(a => !a.isArchived);
-      // Single O(n+m) pass instead of O(n*m)
-      const balMap: Record<string, number> = {};
-      activeAccounts.forEach(a => { balMap[a.id] = a.initialBalance; });
-      transactions.forEach(tx => {
-        if (balMap[tx.accountId] !== undefined) {
-          if (tx.type === 'income') balMap[tx.accountId] += tx.amount;
-          else if (tx.type === 'expense') balMap[tx.accountId] -= tx.amount;
-          else if (tx.type === 'transfer') balMap[tx.accountId] -= tx.amount;
-        }
-        if (tx.toAccountId && balMap[tx.toAccountId] !== undefined && tx.type === 'transfer') {
-          balMap[tx.toAccountId] += tx.amount;
-        }
-      });
-      return Object.values(balMap).reduce((s, v) => s + v, 0);
+      const { accounts } = get();
+      return accounts
+        .filter(a => !a.isArchived)
+        .reduce((s, a) => s + (a.balance ?? a.initialBalance), 0);
     },
 
     getMonthlyStats: (month, year) => {

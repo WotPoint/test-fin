@@ -12,6 +12,7 @@ export interface Account {
   type: AccountType;
   currency: Currency;
   initialBalance: number;
+  balance?: number; // server-computed — always correct regardless of transaction pagination
   color: string;
   icon: string;
   isArchived: boolean;

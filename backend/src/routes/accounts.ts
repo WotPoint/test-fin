@@ -5,11 +5,40 @@ import { validate, AccountCreateSchema, AccountUpdateSchema } from '../validatio
 const router = Router();
 const prisma = new PrismaClient();
 
-// GET /api/accounts
+// GET /api/accounts — includes server-computed balance for every account
 router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const accounts = await prisma.account.findMany({ orderBy: { createdAt: 'asc' } });
-    res.json(accounts);
+
+    // Compute balances in DB — correct regardless of how many transactions exist
+    const fromAgg = await prisma.transaction.groupBy({
+      by: ['accountId', 'type'],
+      _sum: { amount: true },
+    });
+
+    const toAgg = await prisma.transaction.groupBy({
+      by: ['toAccountId'],
+      where: { type: 'transfer', toAccountId: { not: null } },
+      _sum: { amount: true },
+    });
+
+    const balMap: Record<string, number> = {};
+    accounts.forEach(a => { balMap[a.id] = a.initialBalance; });
+
+    fromAgg.forEach(row => {
+      const sum = row._sum.amount ?? 0;
+      if (row.type === 'income') balMap[row.accountId] += sum;
+      else if (row.type === 'expense') balMap[row.accountId] -= sum;
+      else if (row.type === 'transfer') balMap[row.accountId] -= sum;
+    });
+
+    toAgg.forEach(row => {
+      if (row.toAccountId && balMap[row.toAccountId] !== undefined) {
+        balMap[row.toAccountId] += row._sum.amount ?? 0;
+      }
+    });
+
+    res.json(accounts.map(a => ({ ...a, balance: balMap[a.id] ?? a.initialBalance })));
   } catch (e) { next(e); }
 });
 

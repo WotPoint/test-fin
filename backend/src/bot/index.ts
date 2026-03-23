@@ -1,6 +1,7 @@
 import { Bot, InlineKeyboard } from 'grammy';
 import { PrismaClient } from '@prisma/client';
 import { format } from 'date-fns';
+import { askAI, clearHistory } from './ai';
 
 const prisma = new PrismaClient();
 
@@ -123,7 +124,12 @@ export const startBot = () => {
       `*Команды:*\n` +
       `/balance — балансы счетов\n` +
       `/last — последние 5 операций\n` +
-      `/categories — список категорий`,
+      `/categories — список категорий\n` +
+      `/analyze — анализ финансов от ИИ\n` +
+      `/reset — сбросить диалог с аналитиком\n\n` +
+      `*ИИ-аналитик:*\n` +
+      `Начни сообщение с \`?\` — задай любой вопрос\n` +
+      `\`? сколько я потратил на еду за месяц?\``,
       { parse_mode: 'Markdown' }
     );
   });
@@ -256,10 +262,51 @@ export const startBot = () => {
     await ctx.answerCallbackQuery();
   });
 
-  // Text message → transaction
+  // AI: /analyze — quick financial snapshot with AI commentary
+  bot.command('analyze', async ctx => {
+    if (!process.env.GROQ_API_KEY) {
+      await ctx.reply('❌ GROQ_API_KEY не задан.');
+      return;
+    }
+    const msg = await ctx.reply('🤔 Анализирую...');
+    try {
+      const chatId = String(ctx.chat.id);
+      const reply = await askAI(chatId, 'Сделай краткий анализ моих финансов за текущий месяц. Укажи на главные проблемы и дай 2–3 конкретных совета с учётом цели закрыть кредиты.');
+      await ctx.api.editMessageText(ctx.chat.id, msg.message_id, reply);
+    } catch (e) {
+      console.error('Bot /analyze error:', e);
+      await ctx.api.editMessageText(ctx.chat.id, msg.message_id, '❌ Ошибка при обращении к ИИ.');
+    }
+  });
+
+  // AI: /reset — clear conversation history
+  bot.command('reset', async ctx => {
+    const chatId = String(ctx.chat.id);
+    clearHistory(chatId);
+    await ctx.reply('🔄 История диалога с аналитиком сброшена.');
+  });
+
+  // Text message → transaction or AI chat
   bot.on('message:text', async ctx => {
     const text = ctx.message.text;
     if (text.startsWith('/')) return;
+
+    // If message starts with "?" or "ai " — route to AI
+    const isAiQuery = text.startsWith('?') || text.toLowerCase().startsWith('аи ') || text.toLowerCase().startsWith('ai ');
+    if (isAiQuery && process.env.GROQ_API_KEY) {
+      const query = text.replace(/^(\?|аи |ai )/i, '').trim();
+      if (!query) { await ctx.reply('Напиши вопрос после «?»'); return; }
+      const typing = await ctx.reply('🤔 Думаю...');
+      try {
+        const chatId = String(ctx.chat.id);
+        const reply = await askAI(chatId, query);
+        await ctx.api.editMessageText(ctx.chat.id, typing.message_id, reply);
+      } catch (e) {
+        console.error('Bot AI error:', e);
+        await ctx.api.editMessageText(ctx.chat.id, typing.message_id, '❌ Ошибка при обращении к ИИ.');
+      }
+      return;
+    }
 
     try {
     const parsed = parseMessage(text);
