@@ -1,6 +1,6 @@
 import Groq from 'groq-sdk';
 import { PrismaClient } from '@prisma/client';
-import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth, subDays } from 'date-fns';
 
 const prisma = new PrismaClient();
 
@@ -69,6 +69,25 @@ const getFinancialContext = async (): Promise<string> => {
   ).join('\n');
   const totalBalance = accounts.reduce((s, a) => s + computeBalance(a), 0);
 
+  // Last 7 days transactions
+  const week7Start = subDays(now, 6);
+  const weekTx = await prisma.transaction.findMany({
+    where: { date: { gte: week7Start, lte: now } },
+    include: { category: { select: { name: true } } },
+    orderBy: { date: 'desc' },
+  });
+  const weekCatSpend: Record<string, number> = {};
+  weekTx.filter(t => t.type === 'expense').forEach(t => {
+    const name = t.category?.name || 'Без категории';
+    weekCatSpend[name] = (weekCatSpend[name] || 0) + t.amount;
+  });
+  const weekExpense = weekTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const weekIncome = weekTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const weekCatLines = Object.entries(weekCatSpend)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, amt]) => `  ${name}: ${amt.toFixed(2)} ₽`)
+    .join('\n');
+
   // Current month transactions
   const currentTx = await prisma.transaction.findMany({
     where: { date: { gte: monthStart, lte: monthEnd } },
@@ -126,6 +145,12 @@ const getFinancialContext = async (): Promise<string> => {
 Счета:
 ${accountLines || '  —'}
 Общий баланс: ${totalBalance.toFixed(2)} ₽
+
+Последние 7 дней (${format(week7Start, 'dd.MM')}–${format(now, 'dd.MM')}):
+  Доходы: ${weekIncome.toFixed(2)} ₽
+  Расходы: ${weekExpense.toFixed(2)} ₽
+Расходы по категориям за 7 дней:
+${weekCatLines || '  —'}
 
 Текущий месяц (${format(monthStart, 'MMMM yyyy')}):
   Доходы: ${income.toFixed(2)} ₽
