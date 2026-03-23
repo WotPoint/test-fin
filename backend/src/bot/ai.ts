@@ -1,6 +1,6 @@
 import Groq from 'groq-sdk';
 import { PrismaClient } from '@prisma/client';
-import { format, subMonths, startOfMonth, endOfMonth, subDays } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth, subDays, startOfDay, endOfDay } from 'date-fns';
 
 const prisma = new PrismaClient();
 
@@ -68,6 +68,31 @@ const getFinancialContext = async (): Promise<string> => {
     `  ${a.name} (${a.type}): ${computeBalance(a).toFixed(2)} ₽`
   ).join('\n');
   const totalBalance = accounts.reduce((s, a) => s + computeBalance(a), 0);
+
+  // Today & yesterday
+  const todayStart = startOfDay(now);
+  const todayEnd = endOfDay(now);
+  const yesterdayStart = startOfDay(subDays(now, 1));
+  const yesterdayEnd = endOfDay(subDays(now, 1));
+
+  const summarizeDay = (txs: { type: string; amount: number; category: { name: string } | null }[]) => {
+    const exp = txs.filter(t => t.type === 'expense');
+    const inc = txs.filter(t => t.type === 'income');
+    const total = exp.reduce((s, t) => s + t.amount, 0);
+    const incTotal = inc.reduce((s, t) => s + t.amount, 0);
+    const byCat: Record<string, number> = {};
+    exp.forEach(t => { const n = t.category?.name || 'Без категории'; byCat[n] = (byCat[n] || 0) + t.amount; });
+    const catStr = Object.entries(byCat).sort((a, b) => b[1] - a[1])
+      .map(([n, a]) => `  ${n}: ${a.toFixed(2)} ₽`).join('\n');
+    return { total, incTotal, catStr };
+  };
+
+  const [todayTx, yesterdayTx] = await Promise.all([
+    prisma.transaction.findMany({ where: { date: { gte: todayStart, lte: todayEnd } }, include: { category: { select: { name: true } } } }),
+    prisma.transaction.findMany({ where: { date: { gte: yesterdayStart, lte: yesterdayEnd } }, include: { category: { select: { name: true } } } }),
+  ]);
+  const today = summarizeDay(todayTx);
+  const yesterday = summarizeDay(yesterdayTx);
 
   // Last 7 days transactions
   const week7Start = subDays(now, 6);
@@ -145,6 +170,16 @@ const getFinancialContext = async (): Promise<string> => {
 Счета:
 ${accountLines || '  —'}
 Общий баланс: ${totalBalance.toFixed(2)} ₽
+
+Сегодня (${format(now, 'dd.MM')}):
+  Доходы: ${today.incTotal.toFixed(2)} ₽
+  Расходы: ${today.total.toFixed(2)} ₽
+${today.catStr || '  —'}
+
+Вчера (${format(subDays(now, 1), 'dd.MM')}):
+  Доходы: ${yesterday.incTotal.toFixed(2)} ₽
+  Расходы: ${yesterday.total.toFixed(2)} ₽
+${yesterday.catStr || '  —'}
 
 Последние 7 дней (${format(week7Start, 'dd.MM')}–${format(now, 'dd.MM')}):
   Доходы: ${weekIncome.toFixed(2)} ₽
