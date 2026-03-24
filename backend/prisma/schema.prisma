@@ -65,6 +65,9 @@ model Transaction {
   @@index([date])
   @@index([accountId])
   @@index([categoryId])
+  @@index([subcategoryId])
+  @@index([toAccountId])
+  @@index([type])
 }
 
 model Budget {

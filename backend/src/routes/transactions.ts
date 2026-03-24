@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import {
   validate,
   TransactionCreateSchema,
@@ -8,7 +8,6 @@ import {
 } from '../validation/schemas';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // GET /api/transactions?limit=100&offset=0&type=&categoryId=&accountId=&dateFrom=&dateTo=
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {

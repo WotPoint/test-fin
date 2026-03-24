@@ -1,9 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { validate, GoalCreateSchema, GoalUpdateSchema, ContributionSchema } from '../validation/schemas';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // GET /api/goals
 router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
@@ -62,19 +61,16 @@ router.post('/:id/contributions', async (req: Request, res: Response, next: Next
   try {
     const { id: goalId } = req.params;
     const { amount, date } = validate(ContributionSchema, req.body);
-    await prisma.goalContribution.create({
-      data: { goalId, amount, date: new Date(date) },
-    });
-    const goal = await prisma.goal.findUnique({
-      where: { id: goalId },
-      include: { contributions: true },
-    });
-    const currentAmount = goal!.contributions.reduce((sum, c) => sum + c.amount, 0);
-    const updated = await prisma.goal.update({
-      where: { id: goalId },
-      data: { currentAmount },
-      include: { contributions: true },
-    });
+    const [, updated] = await prisma.$transaction([
+      prisma.goalContribution.create({
+        data: { goalId, amount, date: new Date(date) },
+      }),
+      prisma.goal.update({
+        where: { id: goalId },
+        data: { currentAmount: { increment: amount } },
+        include: { contributions: true },
+      }),
+    ]);
     res.status(201).json(updated);
   } catch (e) { next(e); }
 });
@@ -83,17 +79,16 @@ router.post('/:id/contributions', async (req: Request, res: Response, next: Next
 router.delete('/:id/contributions/:cid', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id: goalId, cid } = req.params;
-    await prisma.goalContribution.delete({ where: { id: cid } });
-    const goal = await prisma.goal.findUnique({
-      where: { id: goalId },
-      include: { contributions: true },
-    });
-    const currentAmount = goal!.contributions.reduce((sum, c) => sum + c.amount, 0);
-    const updated = await prisma.goal.update({
-      where: { id: goalId },
-      data: { currentAmount },
-      include: { contributions: true },
-    });
+    const contribution = await prisma.goalContribution.findUnique({ where: { id: cid } });
+    if (!contribution) { res.status(404).json({ error: 'Вклад не найден' }); return; }
+    const [, updated] = await prisma.$transaction([
+      prisma.goalContribution.delete({ where: { id: cid } }),
+      prisma.goal.update({
+        where: { id: goalId },
+        data: { currentAmount: { decrement: contribution.amount } },
+        include: { contributions: true },
+      }),
+    ]);
     res.json(updated);
   } catch (e) { next(e); }
 });

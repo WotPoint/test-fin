@@ -1,9 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { validate, SubcategoryCreateSchema, SubcategoryUpdateSchema } from '../validation/schemas';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // GET /api/subcategories
 router.get('/', async (_req: Request, res: Response, next: NextFunction) => {

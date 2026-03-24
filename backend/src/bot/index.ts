@@ -1,9 +1,7 @@
 import { Bot, InlineKeyboard } from 'grammy';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { format } from 'date-fns';
 import { askAI, clearHistory } from './ai';
-
-const prisma = new PrismaClient();
 
 // Pending subcategory selection: chatId -> txId (with auto-expiry)
 const pendingSubcat = new Map<string, string>();

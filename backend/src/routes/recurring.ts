@@ -1,11 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { v4 as uuidv4 } from 'uuid';
 import { addDays, addMonths, addQuarters, addYears } from 'date-fns';
 import { validate, RecurringCreateSchema, RecurringUpdateSchema } from '../validation/schemas';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // GET /api/recurring
 router.get('/', async (_req: Request, res: Response, next: NextFunction) => {

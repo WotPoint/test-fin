@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import {
   validate,
   CategoryCreateSchema,
@@ -8,7 +8,6 @@ import {
 } from '../validation/schemas';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // GET /api/categories
 router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
@@ -31,9 +30,11 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 router.put('/reorder', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { ids } = validate(ReorderSchema, req.body);
-    await Promise.all(ids.map((id, index) =>
-      prisma.category.update({ where: { id }, data: { order: index } })
-    ));
+    await prisma.$transaction(
+      ids.map((id, index) =>
+        prisma.category.update({ where: { id }, data: { order: index } })
+      )
+    );
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
