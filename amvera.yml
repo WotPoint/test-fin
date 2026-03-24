@@ -5,9 +5,9 @@ meta:
     version: 20
 
 build:
-  additionalCommands: npm install --include=dev && npm run build && cd backend && npm install --include=dev && npx prisma generate && rm -rf dist && npm run build
+  additionalCommands: npm install --include=dev && npm run build && cd backend && npm install --include=dev && npx prisma generate
 
 run:
-  command: cd /app/backend && npx prisma migrate deploy && node dist/src/server.js
+  command: cd /app/backend && npx prisma migrate deploy && npx tsx src/server.ts
   persistenceMount: /data
   containerPort: 3001
