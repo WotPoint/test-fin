@@ -291,7 +291,7 @@ export const startBot = () => {
     if (text.startsWith('/')) return;
 
     // Keyboard button: AI mode toggle
-    if (text === '🤖 ИИ: выкл' || text === '🤖 ИИ: вкл ✅') {
+    if (text.startsWith('🤖 ИИ:') || text.includes('ИИ: выкл') || text.includes('ИИ: вкл')) {
       const nowOn = !(aiMode.get(chatId) ?? false);
       aiMode.set(chatId, nowOn);
       if (nowOn) {
