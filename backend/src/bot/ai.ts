@@ -92,6 +92,22 @@ const TOOLS = [
   {
     type: 'function' as const,
     function: {
+      name: 'plan_budget_from_total',
+      description: 'Распределить фиксированную сумму бюджета по категориям пропорционально средним тратам за последние 3 месяца. Используй когда пользователь говорит "у меня есть X рублей до зп", "составь бюджет на X рублей", "распредели X по категориям".',
+      parameters: {
+        type: 'object',
+        properties: {
+          totalAmount: { type: 'number', description: 'Общая сумма для распределения по категориям (в рублях)' },
+          month: { type: 'number', description: 'Месяц 1-12' },
+          year: { type: 'number', description: 'Год' },
+        },
+        required: ['totalAmount', 'month', 'year'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'delete_last_transaction',
       description: 'Удалить последнюю добавленную транзакцию (если пользователь ошибся)',
       parameters: { type: 'object', properties: {} },
@@ -193,6 +209,54 @@ const executeTool = async (name: string, args: Record<string, unknown>): Promise
 
       if (results.length === 0) return 'Нет трат в текущем месяце для планирования бюджетов.';
       return `Создано ${results.length} бюджетов на ${nextMonth}/${nextYear}:\n${results.join('\n')}`;
+    }
+
+    if (name === 'plan_budget_from_total') {
+      const totalAmount = Number(args.totalAmount);
+      const month = Number(args.month);
+      const year = Number(args.year);
+
+      // Average spending by category over last 3 months
+      const now = new Date();
+      const threeMonthsAgo = startOfMonth(subMonths(now, 3));
+      const lastMonthEnd = endOfMonth(subMonths(now, 1));
+
+      const txs = await prisma.transaction.findMany({
+        where: { date: { gte: threeMonthsAgo, lte: lastMonthEnd }, type: 'expense', categoryId: { not: null } },
+        include: { category: { select: { id: true, name: true } } },
+      });
+
+      const catTotals: Record<string, { id: string; name: string; total: number }> = {};
+      txs.forEach(tx => {
+        if (tx.category) {
+          if (!catTotals[tx.category.id]) catTotals[tx.category.id] = { id: tx.category.id, name: tx.category.name, total: 0 };
+          catTotals[tx.category.id].total += tx.amount;
+        }
+      });
+
+      const entries = Object.values(catTotals).filter(c => c.total > 0);
+      if (entries.length === 0) return 'Нет данных о тратах за последние 3 месяца для распределения бюджета.';
+
+      const grandTotal = entries.reduce((s, c) => s + c.total, 0);
+      const results: string[] = [];
+
+      for (const cat of entries) {
+        const share = cat.total / grandTotal;
+        const amount = Math.max(1, Math.round(totalAmount * share));
+        await prisma.budget.upsert({
+          where: { categoryId_month_year: { categoryId: cat.id, month, year } },
+          update: { amount },
+          create: { categoryId: cat.id, amount, month, year, alertThreshold: 80 },
+        });
+        results.push(`${cat.name}: ${amount} ₽ (${Math.round(share * 100)}%)`);
+      }
+
+      const distributed = results.reduce((s, r) => {
+        const m = r.match(/: (\d+) ₽/);
+        return s + (m ? Number(m[1]) : 0);
+      }, 0);
+
+      return `Бюджет ${totalAmount} ₽ распределён по ${results.length} категориям на ${month}/${year}:\n${results.join('\n')}\n\nИтого распределено: ${distributed} ₽`;
     }
 
     if (name === 'delete_last_transaction') {
