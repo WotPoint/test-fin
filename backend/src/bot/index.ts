@@ -229,7 +229,7 @@ export const startBot = () => {
 
   // AI: /analyze
   bot.command('analyze', async ctx => {
-    if (!process.env.GROQ_API_KEY) { await ctx.reply('❌ GROQ_API_KEY не задан.'); return; }
+    if (!process.env.GIGACHAT_AUTH) { await ctx.reply('❌ GIGACHAT_AUTH не задан.'); return; }
     const msg = await ctx.reply('🤔 Анализирую...');
     try {
       const chatId = String(ctx.chat.id);
@@ -317,7 +317,7 @@ export const startBot = () => {
 
     // Keyboard button: Analyze
     if (text === '📊 Анализ') {
-      if (!process.env.GROQ_API_KEY) { await ctx.reply('❌ GROQ_API_KEY не задан.'); return; }
+      if (!process.env.GIGACHAT_AUTH) { await ctx.reply('❌ GIGACHAT_AUTH не задан.'); return; }
       const msg = await ctx.reply('🤔 Анализирую...');
       try {
         const reply = await askAI(chatId, 'Сделай краткий анализ моих финансов за текущий месяц. Укажи на главные проблемы и дай 2–3 конкретных совета.');
@@ -344,7 +344,7 @@ export const startBot = () => {
     }
 
     // AI mode: route all messages to AI
-    if ((aiMode.get(chatId) ?? false) && process.env.GROQ_API_KEY) {
+    if ((aiMode.get(chatId) ?? false) && process.env.GIGACHAT_AUTH) {
       const typing = await ctx.reply('🤔 Думаю...');
       try {
         const reply = await askAI(chatId, text);

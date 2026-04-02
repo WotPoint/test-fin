@@ -1,6 +1,44 @@
-import Groq from 'groq-sdk';
+import axios from 'axios';
+import https from 'https';
 import { prisma } from '../lib/prisma';
 import { format, subMonths, startOfMonth, endOfMonth, subDays, startOfDay, endOfDay } from 'date-fns';
+
+// ─── GigaChat API client ──────────────────────────────────────────────────────
+
+const GIGACHAT_API = 'https://gigachat.devices.sberbank.ru/api/v1';
+const GIGACHAT_TOKEN_URL = 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth';
+const GIGACHAT_MODEL = 'GigaChat';
+
+// GigaChat uses Russian CA certificates not trusted on non-RU servers — bypass SSL for their endpoints only
+const gigaAxios = axios.create({
+  httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+});
+
+let _token: string | null = null;
+let _tokenExpiry = 0;
+
+const getToken = async (): Promise<string> => {
+  if (_token && Date.now() < _tokenExpiry - 60_000) return _token;
+  const auth = process.env.GIGACHAT_AUTH;
+  if (!auth) throw new Error('GIGACHAT_AUTH не задан в переменных окружения');
+  const res = await gigaAxios.post(
+    GIGACHAT_TOKEN_URL,
+    'scope=GIGACHAT_API_PERS',
+    {
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+        RqUID: crypto.randomUUID(),
+      },
+    }
+  );
+  _token = res.data.access_token as string;
+  _tokenExpiry = (res.data.expires_at as number) * 1000;
+  return _token;
+};
+
+// ─── System prompt ────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `Ты — личный финансовый помощник, что-то вроде умного друга, который хорошо разбирается в деньгах. Работаешь внутри приложения FinTrack и видишь реальные данные: транзакции, счета, бюджеты, финансовые цели.
 
@@ -28,7 +66,8 @@ const SYSTEM_PROMPT = `Ты — личный финансовый помощни
 — Эмодзи уместно, не переусердствуй
 — Отвечай на русском языке`;
 
-// Fuzzy match helper
+// ─── Fuzzy match helper ───────────────────────────────────────────────────────
+
 const fuzzyMatchItems = <T extends { name: string }>(items: T[], word: string): T | undefined => {
   const w = word.toLowerCase();
   return (
@@ -38,84 +77,76 @@ const fuzzyMatchItems = <T extends { name: string }>(items: T[], word: string): 
   );
 };
 
-// Tool definitions
-const TOOLS = [
+// ─── Tool definitions (GigaChat format) ──────────────────────────────────────
+
+const FUNCTIONS = [
   {
-    type: 'function' as const,
-    function: {
-      name: 'create_transaction',
-      description: 'Записать транзакцию — расход или доход',
-      parameters: {
-        type: 'object',
-        properties: {
-          type: { type: 'string', enum: ['income', 'expense'], description: 'Тип: income (доход) или expense (расход)' },
-          amount: { type: 'number', description: 'Сумма в рублях' },
-          categoryName: { type: 'string', description: 'Название категории (необязательно)' },
-          accountName: { type: 'string', description: 'Название счёта (необязательно, по умолчанию первый счёт)' },
-          date: { type: 'string', description: 'Дата в формате YYYY-MM-DD (необязательно, по умолчанию сегодня)' },
-          comment: { type: 'string', description: 'Комментарий (необязательно)' },
-        },
-        required: ['type', 'amount'],
+    name: 'create_transaction',
+    description: 'Записать транзакцию — расход или доход',
+    parameters: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['income', 'expense'], description: 'Тип: income (доход) или expense (расход)' },
+        amount: { type: 'number', description: 'Сумма в рублях' },
+        categoryName: { type: 'string', description: 'Название категории (необязательно)' },
+        accountName: { type: 'string', description: 'Название счёта (необязательно, по умолчанию первый счёт)' },
+        date: { type: 'string', description: 'Дата в формате YYYY-MM-DD (необязательно, по умолчанию сегодня)' },
+        comment: { type: 'string', description: 'Комментарий (необязательно)' },
       },
+      required: ['type', 'amount'],
     },
+    return_parameters: { type: 'object', properties: { result: { type: 'string', description: 'Результат записи транзакции' } } },
   },
   {
-    type: 'function' as const,
-    function: {
-      name: 'create_budget',
-      description: 'Создать или обновить бюджет для категории на конкретный месяц',
-      parameters: {
-        type: 'object',
-        properties: {
-          categoryName: { type: 'string', description: 'Название категории' },
-          amount: { type: 'number', description: 'Сумма бюджета в рублях' },
-          month: { type: 'number', description: 'Месяц 1-12' },
-          year: { type: 'number', description: 'Год' },
-        },
-        required: ['categoryName', 'amount', 'month', 'year'],
+    name: 'create_budget',
+    description: 'Создать или обновить бюджет для категории на конкретный месяц',
+    parameters: {
+      type: 'object',
+      properties: {
+        categoryName: { type: 'string', description: 'Название категории' },
+        amount: { type: 'number', description: 'Сумма бюджета в рублях' },
+        month: { type: 'number', description: 'Месяц 1-12' },
+        year: { type: 'number', description: 'Год' },
       },
+      required: ['categoryName', 'amount', 'month', 'year'],
     },
+    return_parameters: { type: 'object', properties: { result: { type: 'string' } } },
   },
   {
-    type: 'function' as const,
-    function: {
-      name: 'plan_budgets_next_month',
-      description: 'Автоматически составить бюджеты на следующий месяц на основе трат текущего. Можно указать процент корректировки.',
-      parameters: {
-        type: 'object',
-        properties: {
-          adjustPercent: { type: 'number', description: 'Корректировка в % (например -10 = урезать на 10%, 0 = оставить как есть). По умолчанию 0.' },
-        },
+    name: 'plan_budgets_next_month',
+    description: 'Автоматически составить бюджеты на следующий месяц на основе трат прошлого месяца. Можно указать процент корректировки.',
+    parameters: {
+      type: 'object',
+      properties: {
+        adjustPercent: { type: 'number', description: 'Корректировка в % (например -10 = урезать на 10%, 0 = оставить как есть). По умолчанию 0.' },
       },
     },
+    return_parameters: { type: 'object', properties: { result: { type: 'string' } } },
   },
   {
-    type: 'function' as const,
-    function: {
-      name: 'plan_budget_from_total',
-      description: 'Распределить фиксированную сумму бюджета по категориям пропорционально средним тратам за последние 3 месяца. Используй когда пользователь говорит "у меня есть X рублей до зп", "составь бюджет на X рублей", "распредели X по категориям".',
-      parameters: {
-        type: 'object',
-        properties: {
-          totalAmount: { type: 'number', description: 'Общая сумма для распределения по категориям (в рублях)' },
-          month: { type: 'number', description: 'Месяц 1-12' },
-          year: { type: 'number', description: 'Год' },
-        },
-        required: ['totalAmount', 'month', 'year'],
+    name: 'plan_budget_from_total',
+    description: 'Распределить фиксированную сумму бюджета по категориям пропорционально тратам прошлого месяца. Используй когда пользователь говорит "у меня есть X рублей до зп", "составь бюджет на X рублей", "распредели X по категориям".',
+    parameters: {
+      type: 'object',
+      properties: {
+        totalAmount: { type: 'number', description: 'Общая сумма для распределения по категориям (в рублях)' },
+        month: { type: 'number', description: 'Месяц 1-12' },
+        year: { type: 'number', description: 'Год' },
       },
+      required: ['totalAmount', 'month', 'year'],
     },
+    return_parameters: { type: 'object', properties: { result: { type: 'string' } } },
   },
   {
-    type: 'function' as const,
-    function: {
-      name: 'delete_last_transaction',
-      description: 'Удалить последнюю добавленную транзакцию (если пользователь ошибся)',
-      parameters: { type: 'object', properties: {} },
-    },
+    name: 'delete_last_transaction',
+    description: 'Удалить последнюю добавленную транзакцию (если пользователь ошибся)',
+    parameters: { type: 'object', properties: {} },
+    return_parameters: { type: 'object', properties: { result: { type: 'string' } } },
   },
 ];
 
-// Execute tool calls
+// ─── Tool execution ───────────────────────────────────────────────────────────
+
 const executeTool = async (name: string, args: Record<string, unknown>): Promise<string> => {
   try {
     if (name === 'create_transaction') {
@@ -173,15 +204,18 @@ const executeTool = async (name: string, args: Record<string, unknown>): Promise
 
     if (name === 'plan_budgets_next_month') {
       const now = new Date();
-      const monthStart = startOfMonth(now);
-      const monthEnd = endOfMonth(now);
+
+      // Use PREVIOUS month as basis — it has complete data unlike current month
+      const prevMonthDate = subMonths(now, 1);
+      const prevStart = startOfMonth(prevMonthDate);
+      const prevEnd = endOfMonth(prevMonthDate);
 
       const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
       const nextMonth = nextMonthDate.getMonth() + 1;
       const nextYear = nextMonthDate.getFullYear();
 
       const txs = await prisma.transaction.findMany({
-        where: { date: { gte: monthStart, lte: monthEnd }, type: 'expense', categoryId: { not: null } },
+        where: { date: { gte: prevStart, lte: prevEnd }, type: 'expense', categoryId: { not: null } },
         include: { category: { select: { id: true, name: true } } },
       });
 
@@ -207,8 +241,9 @@ const executeTool = async (name: string, args: Record<string, unknown>): Promise
         results.push(`${cat.name}: ${amount} ₽`);
       }
 
-      if (results.length === 0) return 'Нет трат в текущем месяце для планирования бюджетов.';
-      return `Создано ${results.length} бюджетов на ${nextMonth}/${nextYear}:\n${results.join('\n')}`;
+      const prevLabel = format(prevMonthDate, 'MMMM yyyy');
+      if (results.length === 0) return `Нет трат в ${prevLabel} для планирования бюджетов.`;
+      return `Создано ${results.length} бюджетов на ${nextMonth}/${nextYear} (на основе ${prevLabel}):\n${results.join('\n')}`;
     }
 
     if (name === 'plan_budget_from_total') {
@@ -216,13 +251,14 @@ const executeTool = async (name: string, args: Record<string, unknown>): Promise
       const month = Number(args.month);
       const year = Number(args.year);
 
-      // Average spending by category over last 3 months
+      // Use previous month's spending for proportional distribution
       const now = new Date();
-      const threeMonthsAgo = startOfMonth(subMonths(now, 3));
-      const lastMonthEnd = endOfMonth(subMonths(now, 1));
+      const prevMonthDate = subMonths(now, 1);
+      const prevStart = startOfMonth(prevMonthDate);
+      const prevEnd = endOfMonth(prevMonthDate);
 
       const txs = await prisma.transaction.findMany({
-        where: { date: { gte: threeMonthsAgo, lte: lastMonthEnd }, type: 'expense', categoryId: { not: null } },
+        where: { date: { gte: prevStart, lte: prevEnd }, type: 'expense', categoryId: { not: null } },
         include: { category: { select: { id: true, name: true } } },
       });
 
@@ -234,8 +270,25 @@ const executeTool = async (name: string, args: Record<string, unknown>): Promise
         }
       });
 
-      const entries = Object.values(catTotals).filter(c => c.total > 0);
-      if (entries.length === 0) return 'Нет данных о тратах за последние 3 месяца для распределения бюджета.';
+      let entries = Object.values(catTotals).filter(c => c.total > 0);
+
+      // Fallback to last 3 months if previous month has no data
+      if (entries.length === 0) {
+        const threeMonthsAgo = startOfMonth(subMonths(now, 3));
+        const fallbackTxs = await prisma.transaction.findMany({
+          where: { date: { gte: threeMonthsAgo, lte: prevEnd }, type: 'expense', categoryId: { not: null } },
+          include: { category: { select: { id: true, name: true } } },
+        });
+        const fallbackTotals: Record<string, { id: string; name: string; total: number }> = {};
+        fallbackTxs.forEach(tx => {
+          if (tx.category) {
+            if (!fallbackTotals[tx.category.id]) fallbackTotals[tx.category.id] = { id: tx.category.id, name: tx.category.name, total: 0 };
+            fallbackTotals[tx.category.id].total += tx.amount;
+          }
+        });
+        entries = Object.values(fallbackTotals).filter(c => c.total > 0);
+        if (entries.length === 0) return 'Нет данных о тратах для распределения бюджета.';
+      }
 
       const grandTotal = entries.reduce((s, c) => s + c.total, 0);
       const results: string[] = [];
@@ -273,7 +326,8 @@ const executeTool = async (name: string, args: Record<string, unknown>): Promise
   }
 };
 
-// Collect financial snapshot from DB
+// ─── Financial context ────────────────────────────────────────────────────────
+
 const getFinancialContext = async (): Promise<string> => {
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
@@ -281,10 +335,11 @@ const getFinancialContext = async (): Promise<string> => {
 
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
-  const prev1Start = startOfMonth(subMonths(now, 1));
-  const prev1End = endOfMonth(subMonths(now, 1));
-  const prev3Start = startOfMonth(subMonths(now, 3));
+  const prev1Date = subMonths(now, 1);
+  const prev1Start = startOfMonth(prev1Date);
+  const prev1End = endOfMonth(prev1Date);
 
+  // Accounts + balances
   const accounts = await prisma.account.findMany({
     where: { isArchived: false },
     include: {
@@ -309,6 +364,7 @@ const getFinancialContext = async (): Promise<string> => {
   ).join('\n');
   const totalBalance = accounts.reduce((s, a) => s + computeBalance(a), 0);
 
+  // Today / Yesterday
   const todayStart = startOfDay(now);
   const todayEnd = endOfDay(now);
   const yesterdayStart = startOfDay(subDays(now, 1));
@@ -333,6 +389,7 @@ const getFinancialContext = async (): Promise<string> => {
   const today = summarizeDay(todayTx);
   const yesterday = summarizeDay(yesterdayTx);
 
+  // Last 7 days
   const week7Start = subDays(now, 6);
   const weekTx = await prisma.transaction.findMany({
     where: { date: { gte: week7Start, lte: now } },
@@ -351,14 +408,13 @@ const getFinancialContext = async (): Promise<string> => {
     .map(([name, amt]) => `  ${name}: ${amt.toFixed(2)} ₽`)
     .join('\n');
 
+  // Current month
   const currentTx = await prisma.transaction.findMany({
     where: { date: { gte: monthStart, lte: monthEnd } },
     include: { category: { select: { name: true } } },
   });
-
   const income = currentTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
   const expense = currentTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-
   const catSpend: Record<string, number> = {};
   currentTx.filter(t => t.type === 'expense').forEach(t => {
     const name = t.category?.name || 'Без категории';
@@ -369,17 +425,24 @@ const getFinancialContext = async (): Promise<string> => {
     .map(([name, amt]) => `  ${name}: ${amt.toFixed(2)} ₽`)
     .join('\n');
 
+  // Previous month — full breakdown for budget planning
   const prevTx = await prisma.transaction.findMany({
     where: { date: { gte: prev1Start, lte: prev1End } },
+    include: { category: { select: { name: true } } },
   });
   const prevIncome = prevTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
   const prevExpense = prevTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-
-  const last3Tx = await prisma.transaction.findMany({
-    where: { date: { gte: prev3Start, lte: monthEnd }, type: 'expense' },
+  const prevCatSpend: Record<string, number> = {};
+  prevTx.filter(t => t.type === 'expense').forEach(t => {
+    const name = t.category?.name || 'Без категории';
+    prevCatSpend[name] = (prevCatSpend[name] || 0) + t.amount;
   });
-  const avg3Expense = last3Tx.reduce((s, t) => s + t.amount, 0) / 3;
+  const prevCatLines = Object.entries(prevCatSpend)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, amt]) => `  ${name}: ${amt.toFixed(2)} ₽`)
+    .join('\n');
 
+  // Budgets current month
   const budgets = await prisma.budget.findMany({
     where: { month: currentMonth, year: currentYear },
     include: { category: { select: { name: true } } },
@@ -390,6 +453,7 @@ const getFinancialContext = async (): Promise<string> => {
     return `  ${b.category.name}: потрачено ${spent.toFixed(0)} ₽ из ${b.amount} ₽ (${pct}%)`;
   }).join('\n');
 
+  // Goals
   const goals = await prisma.goal.findMany({ where: { isCompleted: false } });
   const goalLines = goals.map(g => {
     const pct = g.targetAmount > 0 ? Math.round((g.currentAmount / g.targetAmount) * 100) : 0;
@@ -427,11 +491,11 @@ ${weekCatLines || '  —'}
 Расходы по категориям (текущий месяц):
 ${catLines || '  —'}
 
-Прошлый месяц:
+Прошлый месяц (${format(prev1Date, 'MMMM yyyy')}) — основа для планирования бюджетов:
   Доходы: ${prevIncome.toFixed(2)} ₽
   Расходы: ${prevExpense.toFixed(2)} ₽
-
-Средний расход за последние 3 месяца: ${avg3Expense.toFixed(2)} ₽/мес
+Расходы по категориям (прошлый месяц):
+${prevCatLines || '  —'}
 
 Бюджеты на текущий месяц:
 ${budgetLines || '  —'}
@@ -441,23 +505,27 @@ ${goalLines || '  —'}
 `.trim();
 };
 
-type HistoryMessage = { role: 'user' | 'assistant'; content: string };
+// ─── Conversation history ─────────────────────────────────────────────────────
 
-// Conversation history per chat (in-memory, resets on restart)
+type HistoryMessage = { role: 'user' | 'assistant'; content: string };
 const conversations = new Map<string, HistoryMessage[]>();
 const MAX_CONVERSATIONS = 100;
 
+// Request message type (includes ephemeral function call/result messages)
+type RequestMessage =
+  | { role: 'system' | 'user' | 'assistant'; content: string | null; function_call?: { name: string; arguments: Record<string, unknown> } }
+  | { role: 'function'; name: string; content: string };
+
+// ─── Main AI function ─────────────────────────────────────────────────────────
+
 export const askAI = async (chatId: string, userMessage: string): Promise<string> => {
-  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   const history = conversations.get(chatId) || [];
   const financialContext = await getFinancialContext();
   const systemWithData = `${SYSTEM_PROMPT}\n\n${financialContext}`;
 
   history.push({ role: 'user', content: userMessage });
 
-  // Build messages for this request — tool calls are ephemeral and not saved to history
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const messages: any[] = [
+  const messages: RequestMessage[] = [
     { role: 'system', content: systemWithData },
     ...history,
   ];
@@ -465,34 +533,37 @@ export const askAI = async (chatId: string, userMessage: string): Promise<string
   let finalReply = '';
 
   for (let i = 0; i < 5; i++) {
-    const response = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages,
-      tools: TOOLS,
-      tool_choice: 'auto',
-      max_tokens: 1024,
-      temperature: 0.75,
-    });
+    const token = await getToken();
+    const res = await gigaAxios.post(
+      `${GIGACHAT_API}/chat/completions`,
+      {
+        model: GIGACHAT_MODEL,
+        messages,
+        functions: FUNCTIONS,
+        function_call: 'auto',
+        max_tokens: 1024,
+        temperature: 0.75,
+      },
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    );
 
-    const msg = response.choices[0].message;
+    const choice = res.data.choices[0];
+    const msg = choice.message;
+    const isFunctionCall = choice.finish_reason === 'function_call' || !!msg.function_call;
 
-    if (msg.tool_calls && msg.tool_calls.length > 0) {
+    if (isFunctionCall && msg.function_call) {
       messages.push({
         role: 'assistant',
-        content: msg.content || '',
-        tool_calls: msg.tool_calls,
+        content: msg.content || null,
+        function_call: msg.function_call,
       });
 
-      for (const toolCall of msg.tool_calls) {
-        let args: Record<string, unknown> = {};
-        try { args = JSON.parse(toolCall.function.arguments); } catch { /* ignore */ }
-        const result = await executeTool(toolCall.function.name, args);
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: result,
-        });
-      }
+      const { name } = msg.function_call;
+      const rawArgs = msg.function_call.arguments;
+      const fnArgs: Record<string, unknown> = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : rawArgs;
+
+      const result = await executeTool(name, fnArgs);
+      messages.push({ role: 'function', name, content: result });
     } else {
       finalReply = msg.content || 'Не удалось получить ответ.';
       break;

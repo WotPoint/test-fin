@@ -106,7 +106,7 @@ export const useFinanceStore = create<FinanceStore>()(
           accountsApi.getAll(),
           categoriesApi.getAll(),
           subcategoriesApi.getAll(),
-          transactionsApi.getAll({ limit: '100' }),
+          transactionsApi.getAll({}),
           budgetsApi.getAll(),
           goalsApi.getAll(),
           recurringApi.getAll(),
@@ -268,12 +268,9 @@ export const useFinanceStore = create<FinanceStore>()(
       // Always update recurring rules (nextDate changes)
       const recurring = await recurringApi.getAll();
       set(s => { s.recurringTransactions = recurring.map(normalizeRecurring); });
-      // Only reload transactions if new ones were actually created — preserve pagination
+      // Only reload transactions if new ones were actually created
       if (result.created > 0) {
-        const { transactions } = get();
-        const txResult = await transactionsApi.getAll({
-          limit: String(Math.max(100, transactions.length)),
-        });
+        const txResult = await transactionsApi.getAll({});
         set(s => {
           s.transactions = txResult.data.map(normalizeTransaction);
           s.transactionsTotal = txResult.total;
