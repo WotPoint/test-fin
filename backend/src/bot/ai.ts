@@ -563,7 +563,7 @@ export const askAI = async (chatId: string, userMessage: string): Promise<string
       const fnArgs: Record<string, unknown> = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : rawArgs;
 
       const result = await executeTool(name, fnArgs);
-      messages.push({ role: 'function', name, content: result });
+      messages.push({ role: 'function', name, content: JSON.stringify({ result }) });
     } else {
       finalReply = msg.content || 'Не удалось получить ответ.';
       break;
