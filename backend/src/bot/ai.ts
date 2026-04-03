@@ -50,6 +50,18 @@ const SYSTEM_PROMPT = `Ты — личный финансовый помощни
 — Цель: закрыть кредиты как можно быстрее
 — Стиль трат: умеренный
 
+ФИКСИРОВАННЫЕ РАСХОДЫ (НЕЛЬЗЯ МЕНЯТЬ):
+— Категории "Квартира" и "Кредиты" — это обязательные фиксированные платежи
+— При планировании бюджета, сжатии расходов или любой оптимизации НИКОГДА не изменяй суммы по этим категориям
+— Урезай только переменные категории: еда, развлечения, одежда, подарки, красота, сигареты и т.п.
+— Если пользователь просит уложиться в конкретную сумму — сначала вычти фиксированные платежи, потом распределяй остаток по переменным категориям
+
+РАБОТА С ДАННЫМИ:
+— Все ответы про траты, расходы и аналитику строй ТОЛЬКО на реальных данных из контекста
+— Если спрашивают о конкретных тратах ("какие траты были лишними", "на что потратила больше всего") — сначала вызови инструмент get_transactions_by_category, чтобы получить список реальных операций, и только потом анализируй
+— Не придумывай общие советы вместо анализа данных — если данных нет, скажи прямо: "в твоих записях нет такой детализации"
+— При сравнении с прошлым месяцем — используй цифры из контекста, не предполагай
+
 КАК СЕБЯ ВЕСТИ:
 — Говори как живой человек, не как корпоративный отчёт
 — Можешь удивиться, если трата нестандартная: "ого, это много для еды"
@@ -114,7 +126,7 @@ const FUNCTIONS = [
   },
   {
     name: 'plan_budgets_next_month',
-    description: 'Автоматически составить бюджеты на следующий месяц на основе трат прошлого месяца. Можно указать процент корректировки.',
+    description: 'Автоматически составить бюджеты на следующий месяц на основе трат прошлого месяца. Можно указать процент корректировки. ВАЖНО: категории "Квартира" и "Кредиты" — фиксированные, их суммы не изменяются при корректировке.',
     parameters: {
       type: 'object',
       properties: {
@@ -125,7 +137,7 @@ const FUNCTIONS = [
   },
   {
     name: 'plan_budget_from_total',
-    description: 'Распределить фиксированную сумму бюджета по категориям пропорционально тратам прошлого месяца. Используй когда пользователь говорит "у меня есть X рублей до зп", "составь бюджет на X рублей", "распредели X по категориям".',
+    description: 'Распределить фиксированную сумму бюджета по категориям пропорционально тратам прошлого месяца. Используй когда пользователь говорит "у меня есть X рублей до зп", "составь бюджет на X рублей", "распредели X по категориям". ВАЖНО: из totalAmount сначала вычти фиксированные платежи (Квартира ~35 000 ₽ и Кредиты ~32 000 ₽), остаток распредели по переменным категориям.',
     parameters: {
       type: 'object',
       properties: {
@@ -134,6 +146,19 @@ const FUNCTIONS = [
         year: { type: 'number', description: 'Год' },
       },
       required: ['totalAmount', 'month', 'year'],
+    },
+    return_parameters: { type: 'object', properties: { result: { type: 'string' } } },
+  },
+  {
+    name: 'get_transactions_by_category',
+    description: 'Получить список конкретных транзакций по категории за период. Используй когда нужна детализация трат: "какие траты на еду были лишними", "что я покупала в категории X", "покажи все покупки за март по категории Y".',
+    parameters: {
+      type: 'object',
+      properties: {
+        categoryName: { type: 'string', description: 'Название категории' },
+        periodMonths: { type: 'number', description: 'За сколько последних месяцев показать (1 = текущий месяц, 2 = последние 2 месяца и т.д.). По умолчанию 1.' },
+      },
+      required: ['categoryName'],
     },
     return_parameters: { type: 'object', properties: { result: { type: 'string' } } },
   },
@@ -227,18 +252,24 @@ const executeTool = async (name: string, args: Record<string, unknown>): Promise
         }
       });
 
+      const FIXED_CATEGORIES = ['квартира', 'кредит', 'кредиты', 'аренда'];
+      const isFixed = (name: string) => FIXED_CATEGORIES.some(f => name.toLowerCase().includes(f));
+
       const adjust = Number(args.adjustPercent ?? 0);
       const multiplier = 1 + adjust / 100;
       const results: string[] = [];
 
       for (const cat of Object.values(catSpend)) {
-        const amount = Math.max(1, Math.round(cat.total * multiplier));
+        // Fixed categories are never scaled — keep their actual spending amount
+        const amount = isFixed(cat.name)
+          ? Math.max(1, Math.round(cat.total))
+          : Math.max(1, Math.round(cat.total * multiplier));
         await prisma.budget.upsert({
           where: { categoryId_month_year: { categoryId: cat.id, month: nextMonth, year: nextYear } },
           update: { amount },
           create: { categoryId: cat.id, amount, month: nextMonth, year: nextYear, alertThreshold: 80 },
         });
-        results.push(`${cat.name}: ${amount} ₽`);
+        results.push(`${cat.name}: ${amount} ₽${isFixed(cat.name) ? ' (фикс.)' : ''}`);
       }
 
       const prevLabel = format(prevMonthDate, 'MMMM yyyy');
@@ -290,12 +321,34 @@ const executeTool = async (name: string, args: Record<string, unknown>): Promise
         if (entries.length === 0) return 'Нет данных о тратах для распределения бюджета.';
       }
 
-      const grandTotal = entries.reduce((s, c) => s + c.total, 0);
+      const FIXED_CATEGORIES = ['квартира', 'кредит', 'кредиты', 'аренда'];
+      const isFixed = (name: string) => FIXED_CATEGORIES.some(f => name.toLowerCase().includes(f));
+
+      // Fixed categories keep their actual spending; variable categories share the remaining budget
+      const fixedEntries = entries.filter(c => isFixed(c.name));
+      const variableEntries = entries.filter(c => !isFixed(c.name));
+
+      const fixedTotal = fixedEntries.reduce((s, c) => s + c.total, 0);
+      const budgetForVariable = Math.max(0, totalAmount - fixedTotal);
+      const variableGrandTotal = variableEntries.reduce((s, c) => s + c.total, 0);
+
       const results: string[] = [];
 
-      for (const cat of entries) {
-        const share = cat.total / grandTotal;
-        const amount = Math.max(1, Math.round(totalAmount * share));
+      // Fixed — always use their actual amounts
+      for (const cat of fixedEntries) {
+        const amount = Math.max(1, Math.round(cat.total));
+        await prisma.budget.upsert({
+          where: { categoryId_month_year: { categoryId: cat.id, month, year } },
+          update: { amount },
+          create: { categoryId: cat.id, amount, month, year, alertThreshold: 80 },
+        });
+        results.push(`${cat.name}: ${amount} ₽ (фикс.)`);
+      }
+
+      // Variable — distribute remaining budget proportionally
+      for (const cat of variableEntries) {
+        const share = variableGrandTotal > 0 ? cat.total / variableGrandTotal : 1 / variableEntries.length;
+        const amount = Math.max(1, Math.round(budgetForVariable * share));
         await prisma.budget.upsert({
           where: { categoryId_month_year: { categoryId: cat.id, month, year } },
           update: { amount },
@@ -309,7 +362,38 @@ const executeTool = async (name: string, args: Record<string, unknown>): Promise
         return s + (m ? Number(m[1]) : 0);
       }, 0);
 
-      return `Бюджет ${totalAmount} ₽ распределён по ${results.length} категориям на ${month}/${year}:\n${results.join('\n')}\n\nИтого распределено: ${distributed} ₽`;
+      return `Бюджет ${totalAmount} ₽ распределён по ${results.length} категориям на ${month}/${year}:\n${results.join('\n')}\n\nФиксированные расходы: ${Math.round(fixedTotal)} ₽\nСвободный бюджет распределён: ${Math.round(budgetForVariable)} ₽\nИтого: ${distributed} ₽`;
+    }
+
+    if (name === 'get_transactions_by_category') {
+      const categories = await prisma.category.findMany({ where: { isArchived: false } });
+      const category = fuzzyMatchItems(categories, String(args.categoryName));
+      if (!category) {
+        const names = categories.map(c => c.name).join(', ');
+        return `Категория "${args.categoryName}" не найдена. Доступные: ${names}`;
+      }
+
+      const now = new Date();
+      const months = Math.max(1, Number(args.periodMonths ?? 1));
+      const periodStart = startOfMonth(subMonths(now, months - 1));
+      const periodEnd = endOfDay(now);
+
+      const txs = await prisma.transaction.findMany({
+        where: { categoryId: category.id, date: { gte: periodStart, lte: periodEnd } },
+        orderBy: { date: 'desc' },
+        take: 50,
+      });
+
+      if (txs.length === 0) return `Нет транзакций по категории "${category.name}" за указанный период.`;
+
+      const total = txs.reduce((s, t) => s + t.amount, 0);
+      const lines = txs.map(t => {
+        const sign = t.type === 'income' ? '+' : '-';
+        const comment = t.comment ? ` — ${t.comment}` : '';
+        return `  ${format(t.date, 'dd.MM')} ${sign}${t.amount} ₽${comment}`;
+      });
+
+      return `Транзакции по категории "${category.name}" (${format(periodStart, 'dd.MM')}–${format(now, 'dd.MM.yyyy')}):\n${lines.join('\n')}\n\nИтого: ${total.toFixed(0)} ₽, ${txs.length} операций`;
     }
 
     if (name === 'delete_last_transaction') {
