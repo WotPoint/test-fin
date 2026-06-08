@@ -14,42 +14,54 @@ export function parseTags(val: unknown): string[] {
   return [];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function normalizeTransaction(tx: any): Transaction {
+export function normalizeTransaction(tx: unknown): Transaction {
+  const data = tx as Record<string, unknown>;
   return {
-    ...tx,
-    date: fmtDate(tx.date),
-    tags: parseTags(tx.tags),
-    categoryId: tx.categoryId ?? '',
-    createdAt: tx.createdAt ? new Date(tx.createdAt).toISOString() : new Date().toISOString(),
+    ...(data as unknown as Transaction),
+    date: fmtDate(data.date as string | Date | null | undefined),
+    tags: parseTags(data.tags),
+    categoryId: (data.categoryId as string | undefined) ?? '',
+    createdAt: data.createdAt
+      ? new Date(data.createdAt as string | Date).toISOString()
+      : new Date().toISOString(),
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function normalizeAccount(a: any): Account {
-  return { ...a, createdAt: a.createdAt ? new Date(a.createdAt).toISOString() : new Date().toISOString() };
+export function normalizeAccount(a: unknown): Account {
+  const data = a as Record<string, unknown>;
+  return {
+    ...(data as unknown as Account),
+    createdAt: data.createdAt
+      ? new Date(data.createdAt as string | Date).toISOString()
+      : new Date().toISOString(),
+  };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function normalizeGoal(g: any): Goal {
+export function normalizeGoal(g: unknown): Goal {
+  const data = g as Record<string, unknown>;
+  const contributions = (data.contributions ?? []) as Array<GoalContribution & { date: string }>;
   return {
-    ...g,
-    deadline: g.deadline ? fmtDate(g.deadline) : undefined,
-    createdAt: g.createdAt ? new Date(g.createdAt).toISOString() : new Date().toISOString(),
-    contributions: (g.contributions ?? []).map((c: GoalContribution & { date: string }) => ({
+    ...(data as unknown as Goal),
+    deadline: data.deadline ? fmtDate(data.deadline as string | Date | null | undefined) : undefined,
+    createdAt: data.createdAt
+      ? new Date(data.createdAt as string | Date).toISOString()
+      : new Date().toISOString(),
+    contributions: contributions.map(c => ({
       ...c,
-      date: fmtDate(c.date),
+      date: fmtDate(c.date as string | Date | null | undefined),
     })),
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function normalizeRecurring(r: any): RecurringTransaction {
+export function normalizeRecurring(r: unknown): RecurringTransaction {
+  const data = r as Record<string, unknown>;
   return {
-    ...r,
-    startDate: fmtDate(r.startDate),
-    nextDate: fmtDate(r.nextDate),
-    endDate: r.endDate ? fmtDate(r.endDate) : undefined,
-    lastProcessedDate: r.lastProcessedDate ? fmtDate(r.lastProcessedDate) : undefined,
+    ...(data as unknown as RecurringTransaction),
+    startDate: fmtDate(data.startDate as string | Date | null | undefined),
+    nextDate: fmtDate(data.nextDate as string | Date | null | undefined),
+    endDate: data.endDate ? fmtDate(data.endDate as string | Date | null | undefined) : undefined,
+    lastProcessedDate: data.lastProcessedDate
+      ? fmtDate(data.lastProcessedDate as string | Date | null | undefined)
+      : undefined,
   };
 }

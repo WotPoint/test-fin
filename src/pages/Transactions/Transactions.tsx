@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
-import { Plus, Search, Trash2, Edit2, ArrowUpDown, Repeat, CheckSquare, Square, X } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, ArrowUpDown, Repeat, CheckSquare, Square, X, Upload } from 'lucide-react';
 import { ConfirmDialog } from '../../components/UI/ConfirmDialog';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import { useFinanceStore } from '../../store/useFinanceStore';
 import { TransactionModal } from './TransactionModal';
 import { RecurringModal } from './RecurringModal';
+import { BankImportModal } from './BankImportModal';
 import { formatMoney, formatDate } from '../../utils/formatters';
 import { TransactionType } from '../../types';
 
@@ -42,6 +43,7 @@ export const Transactions = () => {
   const { transactions, transactionsTotal, categories, accounts, deleteTransaction, loadMoreTransactions } = useFinanceStore();
   const [showModal, setShowModal] = useState(false);
   const [showRecurring, setShowRecurring] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editId, setEditId] = useState<string | undefined>();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
@@ -198,6 +200,12 @@ export const Transactions = () => {
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-bg-border text-text-secondary hover:text-text-primary hover:border-brand/50 text-sm transition-all">
           <Repeat size={15} />
           Регулярные
+        </button>
+
+        <button onClick={() => setShowImport(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-bg-border text-text-secondary hover:text-text-primary hover:border-brand/50 text-sm transition-all">
+          <Upload size={15} />
+          Импорт
         </button>
 
         <button onClick={() => { setEditId(undefined); setShowModal(true); }}
@@ -446,6 +454,7 @@ export const Transactions = () => {
 
       {showModal && <TransactionModal onClose={() => { setShowModal(false); setEditId(undefined); }} editId={editId} />}
       {showRecurring && <RecurringModal onClose={() => setShowRecurring(false)} />}
+      {showImport && <BankImportModal onClose={() => setShowImport(false)} />}
       {confirmDeleteId && (
         <ConfirmDialog
           title="Удалить транзакцию?"

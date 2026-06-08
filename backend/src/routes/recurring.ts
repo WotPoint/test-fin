@@ -78,9 +78,15 @@ router.post('/process', async (_req: Request, res: Response, next: NextFunction)
     const actives = await prisma.recurringTransaction.findMany({ where: { isActive: true } });
     const created: unknown[] = [];
 
+    const MAX_ITERATIONS = 100;
     for (const r of actives) {
       let nextDate = new Date(r.nextDate);
+      let iterations = 0;
       while (nextDate <= today) {
+        if (++iterations > MAX_ITERATIONS) {
+          console.error(`[recurring] Превышен лимит итераций для правила ${r.id} (${r.name})`);
+          break;
+        }
         if (r.endDate && nextDate > new Date(r.endDate)) break;
         const tx = await prisma.transaction.create({
           data: {

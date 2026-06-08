@@ -73,6 +73,34 @@ export const transactionsApi = {
     api.put<Transaction>(`/transactions/${id}`, data),
   remove: (id: string) => api.delete(`/transactions/${id}`),
   bulkRemove: (ids: string[]) => api.delete('/transactions', { ids }),
+  importFile: async (file: File): Promise<{ created: number; skipped: number }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/api/transactions/import', {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+      },
+      body: formData,
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('fintrack_token');
+      window.dispatchEvent(new Event('fintrack:auth-expired'));
+      throw new Error('Сессия истекла. Войдите снова.');
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      let message = `API error ${res.status}`;
+      try {
+        const json = JSON.parse(text);
+        if (json.error) message = json.error;
+      } catch {
+        if (text) message = text;
+      }
+      throw new Error(message);
+    }
+    return res.json();
+  },
 };
 
 export const categoriesApi = {

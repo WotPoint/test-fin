@@ -1,5 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import multer from 'multer';
 import { prisma } from '../lib/prisma';
+import { parseAlfaStatement } from '../lib/bankParsers/alfa';
 import {
   validate,
   TransactionCreateSchema,
@@ -8,6 +10,7 @@ import {
 } from '../validation/schemas';
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 // GET /api/transactions?limit=100&offset=0&type=&categoryId=&accountId=&dateFrom=&dateTo=
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
@@ -32,14 +35,15 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       if (dateTo)   (where.date as Record<string, unknown>).lte = new Date(dateTo as string);
     }
 
-    const take   = limit  ? Math.min(parseInt(limit  as string, 10), 500) : undefined;
-    const skip   = offset ? Math.max(parseInt(offset as string, 10), 0)   : 0;
+    const take = Math.min(limit ? parseInt(limit as string, 10) : 100, 500);
+    const skip = offset ? Math.max(parseInt(offset as string, 10), 0) : 0;
 
     const [data, total] = await Promise.all([
       prisma.transaction.findMany({
         where,
         orderBy: { date: 'desc' },
-        ...(take !== undefined ? { take, skip } : {}),
+        take,
+        skip,
       }),
       prisma.transaction.count({ where }),
     ]);
@@ -87,6 +91,90 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
     const { id } = req.params;
     await prisma.transaction.delete({ where: { id } });
     res.status(204).send();
+  } catch (e) { next(e); }
+});
+
+// POST /api/transactions/import — import bank statement (XLSX)
+router.post('/import', upload.single('file'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: 'Файл не загружен' });
+      return;
+    }
+
+    const operations = parseAlfaStatement(req.file.buffer);
+    if (operations.length === 0) {
+      res.status(400).json({ error: 'Не удалось извлечь операции из файла' });
+      return;
+    }
+
+    const account = await prisma.account.findFirst({
+      where: { isArchived: false },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!account) {
+      res.status(400).json({ error: 'Нет доступных счетов для импорта. Создайте хотя бы один счёт.' });
+      return;
+    }
+
+    // Fetch categories once for fuzzy matching
+    const categories = await prisma.category.findMany({ where: { isArchived: false } });
+
+    const bankImport = await prisma.bankImport.create({
+      data: {
+        fileName: req.file.originalname,
+        bankName: 'alfa',
+        createdCount: 0,
+        skippedCount: 0,
+      },
+    });
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const op of operations) {
+      const existing = await prisma.transaction.findUnique({
+        where: { externalRef: op.externalRef },
+      });
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      // Fuzzy match category
+      let category = categories.find(c =>
+        c.name.toLowerCase() === op.categoryName.toLowerCase()
+      );
+      if (!category) {
+        category = categories.find(c =>
+          c.name.toLowerCase().includes(op.categoryName.toLowerCase()) ||
+          op.categoryName.toLowerCase().includes(c.name.toLowerCase())
+        );
+      }
+
+      await prisma.transaction.create({
+        data: {
+          type: op.rawType,
+          amount: op.amount,
+          categoryId: category?.id || null,
+          accountId: account.id,
+          date: new Date(op.date),
+          comment: op.comment,
+          tags: '[]',
+          externalRef: op.externalRef,
+          source: 'alfa',
+          bankImportId: bankImport.id,
+        },
+      });
+      created++;
+    }
+
+    await prisma.bankImport.update({
+      where: { id: bankImport.id },
+      data: { createdCount: created, skippedCount: skipped },
+    });
+
+    res.json({ created, skipped });
   } catch (e) { next(e); }
 });
 

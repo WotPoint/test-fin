@@ -7,7 +7,7 @@ import { format, subMonths, startOfMonth, endOfMonth, subDays, startOfDay, endOf
 
 const GIGACHAT_API = 'https://gigachat.devices.sberbank.ru/api/v1';
 const GIGACHAT_TOKEN_URL = 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth';
-const GIGACHAT_MODEL = 'GigaChat';
+const GIGACHAT_MODEL = process.env.GIGACHAT_MODEL || 'GigaChat';
 
 // GigaChat uses Russian CA certificates not trusted on non-RU servers — bypass SSL for their endpoints only
 const gigaAxios = axios.create({
@@ -666,6 +666,130 @@ export const askAI = async (chatId: string, userMessage: string): Promise<string
   conversations.set(chatId, history);
 
   return finalReply;
+};
+
+// ─── Screenshot OCR via GigaChat Vision ──────────────────────────────────────
+
+export interface ScreenshotTransaction {
+  type: 'income' | 'expense';
+  amount: number;
+  description: string;
+  date: string | null;
+  categoryGuess?: string;
+}
+
+const SCREENSHOT_PROMPT = `На этом скриншоте история операций из банковского приложения.
+
+Задача: извлеки ВСЕ видимые финансовые операции (траты и поступления) и верни их строго в формате JSON-массива. Не добавляй пояснений, только JSON.
+
+Формат каждой транзакции:
+{
+  "type": "income" | "expense",
+  "amount": число (только положительное),
+  "description": "название операции/контрагента",
+  "date": "YYYY-MM-DD",
+  "categoryGuess": "предполагаемая категория на русском"
+}
+
+Правила:
+- type: "income" для поступлений (зелёные суммы со знаком +), "expense" для трат/списаний (красные/чёрные суммы со знаком − или минус)
+- amount: только число, без знаков, без пробелов, точка как разделитель дробной части
+- description: название операции, например "ВкусВилл", "Зарина К.", "Авито"
+- date: текущий год 2026, если год не указан. Месяц на русском преобразуй в число.
+- Если на скриншоте даты вида "4 июня" или "3 июня" — используй 2026-06-04, 2026-06-03
+- Если точная дата не видна, используй null для date
+- categoryGuess: попытайся угадать категорию по описанию (Продукты, Кафе, Переводы, Аптеки, Маркетплейсы и т.д.)
+
+Верни ТОЛЬКО валидный JSON-массив. Без markdown, без \`\`\`.`;
+
+const TEXT_PARSE_PROMPT = (text: string) => `Вот текст, распознанный со скриншота банковского приложения:
+
+${text}
+
+Извлеки из этого текста ВСЕ финансовые операции (траты и поступления) и верни их строго в формате JSON-массива. Не добавляй пояснений, только JSON.
+
+Формат каждой транзакции:
+{
+  "type": "income" | "expense",
+  "amount": число (только положительное),
+  "description": "название операции/контрагента",
+  "date": "YYYY-MM-DD",
+  "categoryGuess": "предполагаемая категория на русском"
+}
+
+Правила:
+- type: "income" для поступлений (зелёные суммы со знаком +), "expense" для трат/списаний (со знаком − или минус)
+- amount: только число, без знаков, без пробелов, точка как разделитель дробной части
+- description: название операции
+- date: текущий год 2026, если год не указан. Месяц на русском преобразуй в число.
+- Если точная дата не видна, используй null для date
+- categoryGuess: попытайся угадать категорию по описанию
+
+Верни ТОЛЬКО валидный JSON-массив. Без markdown.`;
+
+function extractJsonArray(text: string): ScreenshotTransaction[] | null {
+  // Ищем JSON-массив в ответе
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]);
+    if (Array.isArray(parsed)) return parsed as ScreenshotTransaction[];
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export const analyzeScreenshot = async (base64Image: string): Promise<ScreenshotTransaction[]> => {
+  const token = await getToken();
+
+  const messages = [
+    { role: 'system', content: 'Ты — финансовый помощник. Распознаё транзакции со скриншотов банковских приложений.' },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: SCREENSHOT_PROMPT },
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } },
+      ],
+    },
+  ];
+
+  const res = await gigaAxios.post(
+    `${GIGACHAT_API}/chat/completions`,
+    {
+      model: GIGACHAT_MODEL,
+      messages,
+      max_tokens: 2048,
+      temperature: 0.3,
+    },
+    { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+  );
+
+  const content = res.data.choices[0]?.message?.content || '';
+  return extractJsonArray(content) || [];
+};
+
+export const parseTransactionsFromText = async (text: string): Promise<ScreenshotTransaction[]> => {
+  const token = await getToken();
+
+  const messages = [
+    { role: 'system', content: 'Ты — финансовый помощник. Извлекай транзакции из распознанного текста.' },
+    { role: 'user', content: TEXT_PARSE_PROMPT(text) },
+  ];
+
+  const res = await gigaAxios.post(
+    `${GIGACHAT_API}/chat/completions`,
+    {
+      model: GIGACHAT_MODEL,
+      messages,
+      max_tokens: 2048,
+      temperature: 0.3,
+    },
+    { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+  );
+
+  const content = res.data.choices[0]?.message?.content || '';
+  return extractJsonArray(content) || [];
 };
 
 export const clearHistory = (chatId: string) => {

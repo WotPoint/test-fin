@@ -47,6 +47,7 @@ interface FinanceStore {
   updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   bulkDeleteTransactions: (ids: string[]) => Promise<void>;
+  importBankStatement: (file: File) => Promise<{ created: number; skipped: number }>;
 
   // Recurring actions
   addRecurring: (r: Omit<RecurringTransaction, 'id'>) => Promise<void>;
@@ -83,6 +84,12 @@ export interface AppNotification {
   title: string;
   message: string;
   severity: 'red' | 'yellow' | 'blue';
+}
+
+function handleApiError(e: unknown, fallback: string): never {
+  const msg = e instanceof Error ? e.message : fallback;
+  toast.error(msg);
+  throw e;
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -130,50 +137,74 @@ export const useFinanceStore = create<FinanceStore>()(
     },
 
     loadMoreTransactions: async () => {
-      const { transactions } = get();
-      const txResult = await transactionsApi.getAll({
-        limit: '100',
-        offset: String(transactions.length),
-      });
-      set(s => {
-        txResult.data.map(normalizeTransaction).forEach(tx => s.transactions.push(tx));
-        s.transactionsTotal = txResult.total;
-      });
+      try {
+        const { transactions } = get();
+        const txResult = await transactionsApi.getAll({
+          limit: '100',
+          offset: String(transactions.length),
+        });
+        set(s => {
+          txResult.data.map(normalizeTransaction).forEach(tx => s.transactions.push(tx));
+          s.transactionsTotal = txResult.total;
+        });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при загрузке транзакций');
+      }
     },
 
     // ── Accounts ────────────────────────────────────────────────────────────
 
     addAccount: async (acc) => {
-      const created = await accountsApi.create({ ...acc, id: uuidv4() });
-      set(s => { s.accounts.push(normalizeAccount(created)); });
+      try {
+        const created = await accountsApi.create({ ...acc, id: uuidv4() });
+        set(s => { s.accounts.push(normalizeAccount(created)); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при создании счёта');
+      }
     },
 
     updateAccount: async (id, updates) => {
-      const updated = await accountsApi.update(id, updates);
-      set(s => {
-        const i = s.accounts.findIndex(a => a.id === id);
-        if (i !== -1) s.accounts[i] = normalizeAccount(updated);
-      });
+      try {
+        const updated = await accountsApi.update(id, updates);
+        set(s => {
+          const i = s.accounts.findIndex(a => a.id === id);
+          if (i !== -1) s.accounts[i] = normalizeAccount(updated);
+        });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при обновлении счёта');
+      }
     },
 
     deleteAccount: async (id) => {
-      await accountsApi.remove(id);
-      set(s => { s.accounts = s.accounts.filter(a => a.id !== id); });
+      try {
+        await accountsApi.remove(id);
+        set(s => { s.accounts = s.accounts.filter(a => a.id !== id); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при удалении счёта');
+      }
     },
 
     // ── Categories ──────────────────────────────────────────────────────────
 
     addCategory: async (cat) => {
-      const created = await categoriesApi.create({ ...cat, id: uuidv4(), isDefault: false });
-      set(s => { s.categories.push(created); });
+      try {
+        const created = await categoriesApi.create({ ...cat, id: uuidv4(), isDefault: false });
+        set(s => { s.categories.push(created); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при создании категории');
+      }
     },
 
     updateCategory: async (id, updates) => {
-      const updated = await categoriesApi.update(id, updates);
-      set(s => {
-        const i = s.categories.findIndex(c => c.id === id);
-        if (i !== -1) s.categories[i] = updated;
-      });
+      try {
+        const updated = await categoriesApi.update(id, updates);
+        set(s => {
+          const i = s.categories.findIndex(c => c.id === id);
+          if (i !== -1) s.categories[i] = updated;
+        });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при обновлении категории');
+      }
     },
 
     deleteCategory: async (id) => {
@@ -188,167 +219,257 @@ export const useFinanceStore = create<FinanceStore>()(
     // ── Subcategories ────────────────────────────────────────────────────────
 
     addSubcategory: async (sub) => {
-      const created = await subcategoriesApi.create(sub);
-      set(s => { s.subcategories.push(created); });
+      try {
+        const created = await subcategoriesApi.create(sub);
+        set(s => { s.subcategories.push(created); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при создании подкатегории');
+      }
     },
 
     deleteSubcategory: async (id) => {
-      await subcategoriesApi.remove(id);
-      set(s => { s.subcategories = s.subcategories.filter(sc => sc.id !== id); });
+      try {
+        await subcategoriesApi.remove(id);
+        set(s => { s.subcategories = s.subcategories.filter(sc => sc.id !== id); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при удалении подкатегории');
+      }
     },
 
     // ── Transactions ────────────────────────────────────────────────────────
 
     addTransaction: async (tx) => {
-      const body = {
-        ...tx,
-        id: uuidv4(),
-        tags: JSON.stringify(tx.tags ?? []),
-      };
-      const created = await transactionsApi.create(body as Parameters<typeof transactionsApi.create>[0]);
-      set(s => { s.transactions.push(normalizeTransaction(created)); });
-      // Refresh server-computed balances
-      const accounts = await accountsApi.getAll();
-      set(s => { s.accounts = accounts.map(normalizeAccount); });
+      try {
+        const body = {
+          ...tx,
+          id: uuidv4(),
+          tags: JSON.stringify(tx.tags ?? []),
+        };
+        const created = await transactionsApi.create(body as Parameters<typeof transactionsApi.create>[0]);
+        set(s => { s.transactions.push(normalizeTransaction(created)); });
+        // Refresh server-computed balances
+        const accounts = await accountsApi.getAll();
+        set(s => { s.accounts = accounts.map(normalizeAccount); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при создании транзакции');
+      }
     },
 
     updateTransaction: async (id, updates) => {
-      const body = {
-        ...updates,
-        ...(updates.tags !== undefined ? { tags: JSON.stringify(updates.tags) } : {}),
-      };
-      const updated = await transactionsApi.update(id, body as Parameters<typeof transactionsApi.update>[1]);
-      set(s => {
-        const i = s.transactions.findIndex(t => t.id === id);
-        if (i !== -1) s.transactions[i] = normalizeTransaction(updated);
-      });
-      // Refresh server-computed balances
-      const accounts = await accountsApi.getAll();
-      set(s => { s.accounts = accounts.map(normalizeAccount); });
+      try {
+        const body = {
+          ...updates,
+          ...(updates.tags !== undefined ? { tags: JSON.stringify(updates.tags) } : {}),
+        };
+        const updated = await transactionsApi.update(id, body as Parameters<typeof transactionsApi.update>[1]);
+        set(s => {
+          const i = s.transactions.findIndex(t => t.id === id);
+          if (i !== -1) s.transactions[i] = normalizeTransaction(updated);
+        });
+        // Refresh server-computed balances
+        const accounts = await accountsApi.getAll();
+        set(s => { s.accounts = accounts.map(normalizeAccount); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при обновлении транзакции');
+      }
     },
 
     deleteTransaction: async (id) => {
-      await transactionsApi.remove(id);
-      set(s => { s.transactions = s.transactions.filter(t => t.id !== id); });
-      // Refresh server-computed balances
-      const accounts = await accountsApi.getAll();
-      set(s => { s.accounts = accounts.map(normalizeAccount); });
+      try {
+        await transactionsApi.remove(id);
+        set(s => { s.transactions = s.transactions.filter(t => t.id !== id); });
+        // Refresh server-computed balances
+        const accounts = await accountsApi.getAll();
+        set(s => { s.accounts = accounts.map(normalizeAccount); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при удалении транзакции');
+      }
     },
 
     bulkDeleteTransactions: async (ids) => {
-      await transactionsApi.bulkRemove(ids);
-      set(s => { s.transactions = s.transactions.filter(t => !ids.includes(t.id)); });
-      // Refresh server-computed balances
-      const accounts = await accountsApi.getAll();
-      set(s => { s.accounts = accounts.map(normalizeAccount); });
+      try {
+        await transactionsApi.bulkRemove(ids);
+        set(s => { s.transactions = s.transactions.filter(t => !ids.includes(t.id)); });
+        // Refresh server-computed balances
+        const accounts = await accountsApi.getAll();
+        set(s => { s.accounts = accounts.map(normalizeAccount); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при массовом удалении транзакций');
+      }
+    },
+
+    importBankStatement: async (file) => {
+      try {
+        const result = await transactionsApi.importFile(file);
+        await get().loadData();
+        return result;
+      } catch (e) {
+        handleApiError(e, 'Ошибка при импорте выписки');
+      }
     },
 
     // ── Recurring ───────────────────────────────────────────────────────────
 
     addRecurring: async (r) => {
-      const created = await recurringApi.create(r);
-      set(s => { s.recurringTransactions.push(normalizeRecurring(created)); });
+      try {
+        const created = await recurringApi.create(r);
+        set(s => { s.recurringTransactions.push(normalizeRecurring(created)); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при создании регулярной транзакции');
+      }
     },
 
     updateRecurring: async (id, updates) => {
-      const updated = await recurringApi.update(id, updates);
-      set(s => {
-        const i = s.recurringTransactions.findIndex(r => r.id === id);
-        if (i !== -1) s.recurringTransactions[i] = normalizeRecurring(updated);
-      });
+      try {
+        const updated = await recurringApi.update(id, updates);
+        set(s => {
+          const i = s.recurringTransactions.findIndex(r => r.id === id);
+          if (i !== -1) s.recurringTransactions[i] = normalizeRecurring(updated);
+        });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при обновлении регулярной транзакции');
+      }
     },
 
     deleteRecurring: async (id) => {
-      await recurringApi.remove(id);
-      set(s => { s.recurringTransactions = s.recurringTransactions.filter(r => r.id !== id); });
+      try {
+        await recurringApi.remove(id);
+        set(s => { s.recurringTransactions = s.recurringTransactions.filter(r => r.id !== id); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при удалении регулярной транзакции');
+      }
     },
 
     processRecurring: async () => {
-      const result = await recurringApi.process();
-      // Always update recurring rules (nextDate changes)
-      const recurring = await recurringApi.getAll();
-      set(s => { s.recurringTransactions = recurring.map(normalizeRecurring); });
-      // Only reload transactions if new ones were actually created
-      if (result.created > 0) {
-        const txResult = await transactionsApi.getAll({});
-        set(s => {
-          s.transactions = txResult.data.map(normalizeTransaction);
-          s.transactionsTotal = txResult.total;
-        });
+      try {
+        const result = await recurringApi.process();
+        // Always update recurring rules (nextDate changes)
+        const recurring = await recurringApi.getAll();
+        set(s => { s.recurringTransactions = recurring.map(normalizeRecurring); });
+        // Only reload transactions if new ones were actually created
+        if (result.created > 0) {
+          const txResult = await transactionsApi.getAll({});
+          set(s => {
+            s.transactions = txResult.data.map(normalizeTransaction);
+            s.transactionsTotal = txResult.total;
+          });
+        }
+      } catch (e) {
+        handleApiError(e, 'Ошибка при обработке регулярных транзакций');
       }
     },
 
     // ── Budgets ─────────────────────────────────────────────────────────────
 
     setBudget: async (categoryId, month, year, amount, alertThreshold = 80) => {
-      const existing = get().budgets.find(b => b.categoryId === categoryId && b.month === month && b.year === year);
-      if (existing) {
-        const updated = await budgetsApi.update(existing.id, { amount, alertThreshold });
-        set(s => {
-          const i = s.budgets.findIndex(b => b.id === existing.id);
-          if (i !== -1) s.budgets[i] = updated;
-        });
-      } else {
-        const created = await budgetsApi.create({ categoryId, month, year, amount, alertThreshold });
-        set(s => { s.budgets.push(created); });
+      try {
+        const existing = get().budgets.find(b => b.categoryId === categoryId && b.month === month && b.year === year);
+        if (existing) {
+          const updated = await budgetsApi.update(existing.id, { amount, alertThreshold });
+          set(s => {
+            const i = s.budgets.findIndex(b => b.id === existing.id);
+            if (i !== -1) s.budgets[i] = updated;
+          });
+        } else {
+          const created = await budgetsApi.create({ categoryId, month, year, amount, alertThreshold });
+          set(s => { s.budgets.push(created); });
+        }
+      } catch (e) {
+        handleApiError(e, 'Ошибка при установке бюджета');
       }
     },
 
     deleteBudget: async (id) => {
-      await budgetsApi.remove(id);
-      set(s => { s.budgets = s.budgets.filter(b => b.id !== id); });
+      try {
+        await budgetsApi.remove(id);
+        set(s => { s.budgets = s.budgets.filter(b => b.id !== id); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при удалении бюджета');
+      }
     },
 
     // ── Goals ───────────────────────────────────────────────────────────────
 
     addGoal: async (goal) => {
-      const created = await goalsApi.create({ ...goal, isCompleted: false });
-      set(s => { s.goals.push(normalizeGoal(created)); });
+      try {
+        const created = await goalsApi.create({ ...goal, isCompleted: false });
+        set(s => { s.goals.push(normalizeGoal(created)); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при создании цели');
+      }
     },
 
     updateGoal: async (id, updates) => {
-      const updated = await goalsApi.update(id, updates);
-      set(s => {
-        const i = s.goals.findIndex(g => g.id === id);
-        if (i !== -1) s.goals[i] = normalizeGoal(updated);
-      });
+      try {
+        const updated = await goalsApi.update(id, updates);
+        set(s => {
+          const i = s.goals.findIndex(g => g.id === id);
+          if (i !== -1) s.goals[i] = normalizeGoal(updated);
+        });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при обновлении цели');
+      }
     },
 
     deleteGoal: async (id) => {
-      await goalsApi.remove(id);
-      set(s => { s.goals = s.goals.filter(g => g.id !== id); });
+      try {
+        await goalsApi.remove(id);
+        set(s => { s.goals = s.goals.filter(g => g.id !== id); });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при удалении цели');
+      }
     },
 
     addToGoal: async (id, amount) => {
-      const today = format(new Date(), 'yyyy-MM-dd');
-      const updated = await goalsApi.addContribution(id, amount, today);
-      set(s => {
-        const i = s.goals.findIndex(g => g.id === id);
-        if (i !== -1) s.goals[i] = normalizeGoal(updated);
-      });
+      try {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const updated = await goalsApi.addContribution(id, amount, today);
+        set(s => {
+          const i = s.goals.findIndex(g => g.id === id);
+          if (i !== -1) s.goals[i] = normalizeGoal(updated);
+        });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при пополнении цели');
+      }
     },
 
     // ── Category order ──────────────────────────────────────────────────────
 
     reorderCategories: async (ids) => {
-      await categoriesApi.reorder(ids);
-      set(s => {
-        const ordered = ids
-          .map(id => s.categories.find(c => c.id === id))
-          .filter(Boolean) as Category[];
-        const rest = s.categories.filter(c => !ids.includes(c.id));
-        s.categories = [...ordered, ...rest];
-      });
+      try {
+        await categoriesApi.reorder(ids);
+        set(s => {
+          const ordered = ids
+            .map(id => s.categories.find(c => c.id === id))
+            .filter(Boolean) as Category[];
+          const rest = s.categories.filter(c => !ids.includes(c.id));
+          s.categories = [...ordered, ...rest];
+        });
+      } catch (e) {
+        handleApiError(e, 'Ошибка при изменении порядка категорий');
+      }
     },
 
     // ── Selectors ───────────────────────────────────────────────────────────
 
     getAccountBalance: (accountId) => {
-      const { accounts } = get();
+      const { accounts, transactions } = get();
       const account = accounts.find(a => a.id === accountId);
       if (!account) return 0;
-      // Use server-computed balance (always correct, not limited by pagination)
-      return account.balance ?? account.initialBalance;
+      // Use server-computed balance when available (always correct, not limited by pagination)
+      if (account.balance !== undefined) return account.balance;
+      // Fallback: compute from local transactions (used in tests or offline mode)
+      let bal = account.initialBalance;
+      transactions.forEach(tx => {
+        if (tx.accountId !== accountId) return;
+        if (tx.type === 'income') bal += tx.amount;
+        else if (tx.type === 'expense') bal -= tx.amount;
+        else if (tx.type === 'transfer') bal -= tx.amount;
+      });
+      transactions.forEach(tx => {
+        if (tx.toAccountId === accountId) bal += tx.amount;
+      });
+      return bal;
     },
 
     getTotalBalance: () => {

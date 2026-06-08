@@ -1,7 +1,10 @@
 import { Bot, InlineKeyboard, Keyboard } from 'grammy';
 import { prisma } from '../lib/prisma';
 import { format } from 'date-fns';
-import { askAI, clearHistory } from './ai';
+import axios from 'axios';
+import sharp from 'sharp';
+import { askAI, clearHistory, analyzeScreenshot, parseTransactionsFromText } from './ai';
+import { runOCR } from './ocr';
 
 // Pending subcategory selection: chatId -> txId (with auto-expiry)
 const pendingSubcat = new Map<string, string>();
@@ -207,6 +210,7 @@ export const startBot = () => {
       `\`+28000 Зарплата\` → Доход 28000 ₽\n` +
       `\`-1500 ЖКХ Альфа\` → Счёт Альфа\n` +
       `\`500 Кафе #кофе 15.03\` → с тегом и датой\n\n` +
+      `📸 Отправь скриншот истории операций из банка — я распознаю и запишу все транзакции автоматически!\n\n` +
       `Нажми *🤖 ИИ: выкл* чтобы включить режим ИИ — тогда все сообщения идут к ассистенту, и он может записывать данные сам.`,
       { parse_mode: 'Markdown', reply_markup: buildKeyboard(isAiOn) }
     );
@@ -424,6 +428,103 @@ export const startBot = () => {
     } catch (e) {
       console.error('Bot message handler error:', e);
       await ctx.reply('❌ Произошла ошибка. Попробуйте позже.');
+    }
+  });
+
+  // Photo handler: screenshot → vision/OCR → transactions
+  bot.on('message:photo', async ctx => {
+    const photos = ctx.message.photo;
+    if (!photos || photos.length === 0) return;
+
+    const largest = photos[photos.length - 1];
+    const processingMsg = await ctx.reply('🔍 Анализирую скриншот...');
+
+    try {
+      const file = await ctx.api.getFile(largest.file_id);
+      if (!file.file_path) {
+        await ctx.api.editMessageText(ctx.chat.id, processingMsg.message_id, '❌ Не удалось получить файл.');
+        return;
+      }
+
+      const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
+      const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+      const buffer = Buffer.from(response.data);
+
+      // Конвертируем в JPEG и уменьшаем для vision
+      const jpegBuffer = await sharp(buffer)
+        .resize(1200, null, { withoutEnlargement: true, fit: 'inside' })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+
+      const base64 = jpegBuffer.toString('base64');
+
+      // Пробуем Vision
+      let transactions = await analyzeScreenshot(base64);
+
+      // Fallback на OCR
+      if (transactions.length === 0) {
+        await ctx.api.editMessageText(ctx.chat.id, processingMsg.message_id, '🔍 Распознаю текст через OCR...');
+        const ocrText = await runOCR(buffer);
+        if (ocrText.trim().length > 10) {
+          transactions = await parseTransactionsFromText(ocrText);
+        }
+      }
+
+      if (transactions.length === 0) {
+        await ctx.api.editMessageText(ctx.chat.id, processingMsg.message_id, '❌ Не удалось распознать транзакции на скриншоте. Попробуйте отправить более чёткий скриншот.');
+        return;
+      }
+
+      // Загружаем категории и счета
+      const allCats = await prisma.category.findMany({
+        where: { isArchived: false },
+        include: { subcategories: true },
+      });
+      const allAccounts = await prisma.account.findMany({
+        where: { isArchived: false },
+        orderBy: { createdAt: 'asc' },
+      });
+      const defaultAccount = allAccounts[0];
+
+      if (!defaultAccount) {
+        await ctx.api.editMessageText(ctx.chat.id, processingMsg.message_id, '❌ Нет доступных счетов для записи.');
+        return;
+      }
+
+      let created = 0;
+      const lines: string[] = [];
+
+      for (const tx of transactions) {
+        const cat = tx.categoryGuess ? fuzzyMatch(allCats, tx.categoryGuess) : undefined;
+        const date = tx.date ? new Date(tx.date) : new Date();
+
+        await prisma.transaction.create({
+          data: {
+            type: tx.type,
+            amount: Math.abs(tx.amount),
+            categoryId: cat?.id || null,
+            accountId: defaultAccount.id,
+            date,
+            comment: tx.description || null,
+            tags: '[]',
+            source: 'screenshot',
+          },
+        });
+
+        created++;
+        const sign = tx.type === 'income' ? '+' : '−';
+        lines.push(`${sign}${fmt(tx.amount)} · ${tx.description}${cat ? ` · ${cat.name}` : ''}`);
+      }
+
+      await ctx.api.editMessageText(
+        ctx.chat.id,
+        processingMsg.message_id,
+        `✅ Распознано и записано: *${created}* операций\n\n${lines.join('\n')}`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (e) {
+      console.error('Bot photo handler error:', e);
+      await ctx.api.editMessageText(ctx.chat.id, processingMsg.message_id, '❌ Ошибка при обработке скриншота.');
     }
   });
 

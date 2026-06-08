@@ -1,11 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-const _jwtSecret = process.env.JWT_SECRET;
-if (!_jwtSecret) throw new Error('JWT_SECRET environment variable is required');
-export const JWT_SECRET = _jwtSecret;
+export const JWT_SECRET = process.env.JWT_SECRET || '';
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+  if (!JWT_SECRET) {
+    res.status(500).json({ error: 'JWT_SECRET не задан в переменных окружения' });
+    return;
+  }
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Требуется авторизация' });

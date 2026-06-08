@@ -57,10 +57,14 @@ model Transaction {
   comment       String?
   tags          String    @default("[]")
   recurringId   String?
+  bankImportId  String?
+  externalRef   String?   @unique
+  source        String?
   account       Account      @relation("FromAccount", fields: [accountId], references: [id])
   toAccount     Account?     @relation("ToAccount", fields: [toAccountId], references: [id])
   category      Category?    @relation(fields: [categoryId], references: [id])
   subcategory   Subcategory? @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
+  bankImport    BankImport?  @relation(fields: [bankImportId], references: [id])
 
   @@index([date])
   @@index([accountId])
@@ -68,6 +72,7 @@ model Transaction {
   @@index([subcategoryId])
   @@index([toAccountId])
   @@index([type])
+  @@index([externalRef])
 }
 
 model Budget {
@@ -102,6 +107,16 @@ model GoalContribution {
   amount Float
   date   DateTime
   goal   Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+}
+
+model BankImport {
+  id            String   @id @default(uuid())
+  fileName      String
+  bankName      String   @default("alfa")
+  importedAt    DateTime @default(now())
+  createdCount  Int      @default(0)
+  skippedCount  Int      @default(0)
+  transactions  Transaction[]
 }
 
 model RecurringTransaction {

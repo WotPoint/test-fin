@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import rateLimit from 'express-rate-limit';
+import { prisma } from './lib/prisma';
 import { errorHandler } from './middleware/errorHandler';
 import { authMiddleware } from './middleware/auth';
 import authRouter from './routes/auth';
@@ -46,7 +47,14 @@ app.use(generalLimiter);
 
 // ─── Public routes ────────────────────────────────────────────────────────────
 
-app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+app.get('/api/health', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'ok' });
+  } catch {
+    res.status(503).json({ status: 'error', message: 'Database unavailable' });
+  }
+});
 app.use('/api/auth', authLimiter, authRouter);
 
 // ─── Protected routes ─────────────────────────────────────────────────────────
