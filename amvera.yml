@@ -5,9 +5,9 @@ meta:
     version: 20
 
 build:
-  additionalCommands: npm install --include=dev && npm run build && cd backend && npm install --include=dev && npx prisma generate
+  additionalCommands: npm install --include=dev && npm run build && cd backend && npm install --include=dev && npm run build && npx prisma generate
 
 run:
-  command: echo "=== Checking dist ===" && ls -la /app/dist || echo "DIST NOT FOUND" && echo "=== Starting server ===" && cd /app/backend && npx prisma migrate deploy && npx tsx src/server.ts
+  command: cd /app/backend && npx prisma migrate deploy && node dist/server.js
   persistenceMount: /data
   containerPort: 3001
