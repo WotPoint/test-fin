@@ -85,12 +85,16 @@ app.get('/health', (_req, res) => {
 });
 
 // Раздача React SPA в продакшене
-const distPath = path.join(__dirname, '../../dist');
-console.log(`[APP] Serving static files from: ${distPath}`);
+// __dirname при запуске compiled JS: /app/backend/dist/src
+// Фронтенд собирается в /app/dist (корень проекта)
+const distPath = path.join(__dirname, '../../../dist');
 console.log(`[APP] __dirname: ${__dirname}`);
+console.log(`[APP] Serving static files from: ${distPath}`);
 app.use(express.static(distPath));
 app.get('*', (_req, res) => {
-  res.sendFile(path.join(distPath, 'index.html'));
+  const indexPath = path.join(distPath, 'index.html');
+  console.log(`[APP] Serving index.html from: ${indexPath}`);
+  res.sendFile(indexPath);
 });
 
 app.use(errorHandler);
