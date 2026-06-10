@@ -6,6 +6,7 @@ import { startBot } from './bot';
 import { prisma } from './lib/prisma';
 
 const PORT = process.env.PORT || 3001;
+const HOST = process.env.HOST || '0.0.0.0';
 
 // Проверка обязательных переменных окружения
 const requiredEnv = ['JWT_SECRET', 'APP_USERNAME', 'APP_PASSWORD'];
@@ -16,8 +17,11 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-const server = app.listen(PORT, () => {
-  console.log(`FinTrack backend running on http://localhost:${PORT}`);
+console.log(`[STARTUP] PORT=${PORT}, HOST=${HOST}`);
+console.log(`[STARTUP] NODE_ENV=${process.env.NODE_ENV || 'not set'}`);
+
+const server = app.listen(Number(PORT), HOST, () => {
+  console.log(`[STARTUP] FinTrack backend running on http://${HOST}:${PORT}`);
   if (process.env.TELEGRAM_BOT_TOKEN) {
     try {
       startBot();
