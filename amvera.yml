@@ -10,4 +10,3 @@ build:
 run:
   command: cd /app/backend && npx prisma migrate deploy && node dist/src/server.js
   persistenceMount: /data
-  containerPort: 3001

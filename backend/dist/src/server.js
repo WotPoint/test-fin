@@ -8,7 +8,7 @@ node_dns_1.default.setDefaultResultOrder('ipv4first');
 const app_1 = __importDefault(require("./app"));
 const bot_1 = require("./bot");
 const prisma_1 = require("./lib/prisma");
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 80;
 const HOST = process.env.HOST || '0.0.0.0';
 // Проверка обязательных переменных окружения
 const requiredEnv = ['JWT_SECRET', 'APP_USERNAME', 'APP_PASSWORD'];
