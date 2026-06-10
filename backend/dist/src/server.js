@@ -6,7 +6,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const node_dns_1 = __importDefault(require("node:dns"));
 node_dns_1.default.setDefaultResultOrder('ipv4first');
 const app_1 = __importDefault(require("./app"));
-const bot_1 = require("./bot");
 const prisma_1 = require("./lib/prisma");
 const PORT = process.env.PORT || 80;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -20,16 +19,17 @@ if (missing.length > 0) {
 }
 console.log(`[STARTUP] PORT=${PORT}, HOST=${HOST}`);
 console.log(`[STARTUP] NODE_ENV=${process.env.NODE_ENV || 'not set'}`);
+console.log(`[STARTUP] ENV PORT from amvera: ${process.env.PORT || 'not set'}`);
 const server = app_1.default.listen(Number(PORT), HOST, () => {
     console.log(`[STARTUP] FinTrack backend running on http://${HOST}:${PORT}`);
-    if (process.env.TELEGRAM_BOT_TOKEN) {
-        try {
-            (0, bot_1.startBot)();
-        }
-        catch (e) {
-            console.error('[WARN] Не удалось запустить Telegram-бота:', e);
-        }
-    }
+    // Telegram bot temporarily disabled for debugging
+    // if (process.env.TELEGRAM_BOT_TOKEN) {
+    //   try {
+    //     startBot();
+    //   } catch (e) {
+    //     console.error('[WARN] Не удалось запустить Telegram-бота:', e);
+    //   }
+    // }
 });
 // Graceful shutdown
 function shutdown(signal) {

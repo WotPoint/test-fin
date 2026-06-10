@@ -74,13 +74,20 @@ app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Простой health check для Amvera
+// Корневой health check для Amvera (должен отвечать 200)
+app.get('/', (_req, res) => {
+  res.status(200).send('ok');
+});
+
+// Дополнительный health check
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok', time: new Date().toISOString() });
 });
 
 // Раздача React SPA в продакшене
 const distPath = path.join(__dirname, '../../dist');
+console.log(`[APP] Serving static files from: ${distPath}`);
+console.log(`[APP] __dirname: ${__dirname}`);
 app.use(express.static(distPath));
 app.get('*', (_req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
