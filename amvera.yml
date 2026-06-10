@@ -8,6 +8,6 @@ build:
   additionalCommands: npm install --include=dev && npm run build && cd backend && npm install --include=dev && npx prisma generate
 
 run:
-  command: cd /app/backend && npx prisma migrate deploy && npx tsx src/server.ts
+  command: echo "=== Checking dist ===" && ls -la /app/dist || echo "DIST NOT FOUND" && echo "=== Starting server ===" && cd /app/backend && npx prisma migrate deploy && npx tsx src/server.ts
   persistenceMount: /data
   containerPort: 3001

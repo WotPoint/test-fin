@@ -74,6 +74,11 @@ app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
+// Простой health check для Amvera
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'ok', time: new Date().toISOString() });
+});
+
 // Раздача React SPA в продакшене
 const distPath = path.join(__dirname, '../../dist');
 app.use(express.static(distPath));
