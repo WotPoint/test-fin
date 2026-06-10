@@ -4,7 +4,6 @@ backend/node_modules/
 
 # Build output
 dist/
-backend/dist/
 
 # Environment files (secrets — set via Amvera dashboard in production)
 .env
