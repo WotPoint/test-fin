@@ -45,6 +45,15 @@ server.on('error', (err) => {
   console.error('[SERVER ERROR]', err);
 });
 
+server.on('connection', (socket) => {
+  console.log(`[TCP] Новое соединение от ${socket.remoteAddress}:${socket.remotePort}`);
+});
+
+// Heartbeat: пишем каждые 10 секунд, чтобы видеть, жив ли процесс
+setInterval(() => {
+  console.log(`[HEARTBEAT] Сервер жив, uptime: ${process.uptime()}s, memory: ${JSON.stringify(process.memoryUsage())}`);
+}, 10000);
+
 // Graceful shutdown
 function shutdown(signal: string) {
   console.log(`[${signal}] Получен сигнал завершения, закрываю соединения...`);
