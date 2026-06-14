@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 import dns from 'node:dns';
 dns.setDefaultResultOrder('ipv4first');
 
@@ -5,7 +7,7 @@ import app from './app';
 import { startBot } from './bot';
 import { prisma } from './lib/prisma';
 
-const PORT = process.env.PORT || 80;
+const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // Проверка обязательных переменных окружения
