@@ -8,7 +8,7 @@ import { startBot } from './bot';
 import { prisma } from './lib/prisma';
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = process.env.HOST || '::';
 
 console.log('[BOOT] Сервер стартует...');
 console.log(`[BOOT] __dirname: ${__dirname}`);
