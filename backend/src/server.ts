@@ -7,8 +7,12 @@ import app from './app';
 import { startBot } from './bot';
 import { prisma } from './lib/prisma';
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 80;
 const HOST = process.env.HOST || '0.0.0.0';
+
+console.log('[BOOT] Сервер стартует...');
+console.log(`[BOOT] __dirname: ${__dirname}`);
+console.log(`[BOOT] cwd: ${process.cwd()}`);
 
 // Проверка обязательных переменных окружения
 const requiredEnv = ['JWT_SECRET', 'APP_USERNAME', 'APP_PASSWORD'];
@@ -22,9 +26,11 @@ if (missing.length > 0) {
 console.log(`[STARTUP] PORT=${PORT}, HOST=${HOST}`);
 console.log(`[STARTUP] NODE_ENV=${process.env.NODE_ENV || 'not set'}`);
 console.log(`[STARTUP] ENV PORT from amvera: ${process.env.PORT || 'not set'}`);
+console.log(`[STARTUP] DATABASE_URL: ${process.env.DATABASE_URL ? 'задан' : 'не задан'}`);
 
 const server = app.listen(Number(PORT), HOST, () => {
   console.log(`[STARTUP] FinTrack backend running on http://${HOST}:${PORT}`);
+  console.log('[STARTUP] Сервер успешно привязан к порту, ожидаю запросы');
   // Telegram bot temporarily disabled for debugging
   // if (process.env.TELEGRAM_BOT_TOKEN) {
   //   try {
@@ -33,6 +39,10 @@ const server = app.listen(Number(PORT), HOST, () => {
   //     console.error('[WARN] Не удалось запустить Telegram-бота:', e);
   //   }
   // }
+});
+
+server.on('error', (err) => {
+  console.error('[SERVER ERROR]', err);
 });
 
 // Graceful shutdown

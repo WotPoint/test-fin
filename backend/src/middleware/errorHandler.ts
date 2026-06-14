@@ -3,10 +3,14 @@ import { Prisma } from '@prisma/client';
 
 export function errorHandler(
   err: Error & { status?: number },
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ) {
+  console.error(`[ERROR] ${req.method} ${req.url}:`, err.message);
+  if (err.stack) {
+    console.error(err.stack);
+  }
   // Prisma known errors
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === 'P2025') {

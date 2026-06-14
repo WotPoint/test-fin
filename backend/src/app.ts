@@ -18,6 +18,20 @@ const app = express();
 
 app.set('trust proxy', 1);
 
+// ─── Request logging ───────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  const start = Date.now();
+  const clientIp = req.ip || req.socket.remoteAddress;
+  console.log(`[REQUEST] ${req.method} ${req.url} from ${clientIp}`);
+
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[RESPONSE] ${req.method} ${req.url} ${res.statusCode} - ${duration}ms`);
+  });
+
+  next();
+});
+
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 
 const generalLimiter = rateLimit({
