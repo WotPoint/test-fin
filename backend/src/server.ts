@@ -7,7 +7,7 @@ import app from './app';
 import { startBot } from './bot';
 import { prisma } from './lib/prisma';
 
-const PORT = process.env.PORT || 80;
+const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 console.log('[BOOT] Сервер стартует...');
