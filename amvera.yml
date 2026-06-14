@@ -8,6 +8,6 @@ build:
   additionalCommands: npm install --include=dev && npm run build && cd backend && npm install --include=dev && npm run build && npx prisma generate
 
 run:
-  command: cd /app/backend && npx prisma migrate deploy && node dist/src/server.js
+  scriptName: backend/start.js
   persistenceMount: /data
   containerPort: 3000
